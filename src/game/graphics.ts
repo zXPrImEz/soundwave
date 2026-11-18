@@ -22,6 +22,8 @@ export interface GraphicsSettings {
   lights: Level;
   /** Fireworks and CO2. */
   effects: Level;
+  /** Scanned surface textures: off (drawn in the shader instead), 1K, 2K or 4K. */
+  textures: Level;
   /** Bloom around bright lights. */
   glow: boolean;
   antialias: boolean;
@@ -38,6 +40,7 @@ export const PRESETS: Record<Tier, Omit<GraphicsSettings, 'preset'>> = {
     beams: 'low',
     lights: 'low',
     effects: 'low',
+    textures: 'low',
     glow: false,
     antialias: false,
   },
@@ -49,6 +52,7 @@ export const PRESETS: Record<Tier, Omit<GraphicsSettings, 'preset'>> = {
     beams: 'medium',
     lights: 'medium',
     effects: 'medium',
+    textures: 'low',
     glow: true,
     antialias: false,
   },
@@ -60,6 +64,7 @@ export const PRESETS: Record<Tier, Omit<GraphicsSettings, 'preset'>> = {
     beams: 'high',
     lights: 'high',
     effects: 'high',
+    textures: 'medium',
     glow: true,
     antialias: true,
   },
@@ -71,6 +76,7 @@ export const PRESETS: Record<Tier, Omit<GraphicsSettings, 'preset'>> = {
     beams: 'high',
     lights: 'high',
     effects: 'high',
+    textures: 'high',
     glow: true,
     antialias: true,
   },
@@ -179,7 +185,7 @@ const LEVELS: Level[] = ['off', 'low', 'medium', 'high'];
 export function normalizeGraphics(raw: unknown): GraphicsSettings {
   const g = { ...DEFAULT_GRAPHICS, ...(typeof raw === 'object' && raw ? raw : {}) } as GraphicsSettings;
   if (!['auto', 'low', 'medium', 'high', 'ultra', 'custom'].includes(g.preset)) g.preset = 'auto';
-  for (const k of ['crowd', 'beams', 'lights', 'effects'] as const) if (!LEVELS.includes(g[k])) g[k] = DEFAULT_GRAPHICS[k];
+  for (const k of ['crowd', 'beams', 'lights', 'effects', 'textures'] as const) if (!LEVELS.includes(g[k])) g[k] = DEFAULT_GRAPHICS[k];
   if (![0, 30, 60, 120].includes(g.fpsCap)) g.fpsCap = DEFAULT_GRAPHICS.fpsCap;
   g.resolution = Math.min(1, Math.max(0.5, Number(g.resolution) || DEFAULT_GRAPHICS.resolution));
   for (const k of ['dynamicResolution', 'glow', 'antialias'] as const) g[k] = Boolean(g[k]);

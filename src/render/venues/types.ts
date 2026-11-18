@@ -21,6 +21,8 @@ export interface VenueContext {
   part?: Part;
   focus?: string;
   cast: Cast;
+  /** Highest anisotropic filtering the graphics card does (for textures seen at a slant). */
+  anisotropy: number;
   /** The crowd's character names. */
   characters: string[];
 }
@@ -103,6 +105,10 @@ export interface Venue {
    * leave out of the mirrored picture besides the people and the beams.
    */
   mirror?: { level: number; hide?: THREE.Object3D[] };
+  /** Height at which the beams lay pools of light (over the crowd's heads); none when not given. */
+  pools?: number;
+  /** A colour grade over the picture: contrast, saturation and a vignette (see kit/grade). */
+  grade?: { contrast: number; saturation: number; vignette: number; tint?: Rgb };
   /** Film grain, vignette and a little shake for a hand-held camera, 0..1. */
   handheld?: number;
   /** Sets the shared uniforms this venue holds still (glow, haze, screens). Called every frame. */

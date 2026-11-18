@@ -251,6 +251,10 @@ export function App() {
     return () => window.removeEventListener('mousedown', press);
   }, [windowed]);
   useEffect(() => document.documentElement.style.setProperty('--ui-scale', String(settings.uiScale)), [settings.uiScale]);
+  // The menus take the colours of the venue behind them (see the venue themes in styles.css).
+  useEffect(() => {
+    document.documentElement.dataset.venue = menuVenue(settings.venue);
+  }, [settings.venue]);
   // Motion: the player's choice, or the system's when they left it alone.
   useEffect(() => {
     const media = matchMedia('(prefers-reduced-motion: reduce)');

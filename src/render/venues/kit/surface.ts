@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { COMMON, OUTPUT, STATIC_VERTEX, shared } from '../../aurora/shared';
+import type { Scan } from './textures';
 
 /** The look of a surface: its pattern (drawn in the shader, so no textures to load) and finish. */
-export type Pattern = 'plain' | 'concrete' | 'brick' | 'wood' | 'metal' | 'fabric' | 'grass' | 'glass';
+export type Pattern =
+  'plain' | 'concrete' | 'brick' | 'wood' | 'metal' | 'fabric' | 'grass' | 'glass' | 'grille' | 'hazard' | 'graffiti' | 'seats' | 'panels';
 
 export interface SurfaceOptions {
   pattern?: Pattern;
@@ -21,6 +23,20 @@ export interface SurfaceOptions {
   /** Share of the surface that is wet, for a mirror floor. */
   wet?: number;
   side?: THREE.Side;
+  /** The mesh carries contact shading baked into its vertex colours (the Blender build's). */
+  ao?: boolean;
+  /**
+   * A scanned material to draw the surface with (see textures.ts); `color` then tints it (white
+   * leaves it as scanned). Without one (textures off, or not loaded) the pattern is drawn instead.
+   */
+  scan?: Scan;
+  /** Metres one tile of the scan covers. */
+  scanScale?: number;
+  /** Colour the scan is multiplied with, and a factor on its roughness (below 1 is glossier). */
+  tint?: THREE.ColorRepresentation;
+  scanRough?: number;
+  /** How strongly the scan's normal map shapes the light, 0..1.5. */
+  bump?: number;
 }
 
 const FRAGMENT = /* glsl */ `
@@ -36,6 +52,10 @@ uniform vec3 uAmbient;
 uniform vec2 uGlowLight;
 uniform vec4 uBall;
 uniform float uBallTurn;
+uniform sampler2D uScanC;
+uniform sampler2D uScanN;
+uniform float uScanScale;
+uniform float uBump;
 uniform sampler2D uMirrorMap;
 uniform mat4 uMirrorMatrix;
 uniform float uMirrorOn;
@@ -103,6 +123,49 @@ void main() {
     base = uColor * (0.75 + 0.3 * sin(q.x * 40.0) * sin(q.y * 40.0) + 0.25 * vnoise(q * 3.0));
   #elif defined(GRASS)
     base = mix(uColor, uColor2, fbm(q * 0.5)) * (0.8 + 0.3 * vnoise(q * 30.0));
+  #elif defined(GRILLE)
+    // A speaker's perforated front: a fine grid of holes, fading to an even grey far away.
+    vec2 h = fract(q * 28.0) - 0.5;
+    float hole = smoothstep(0.32, 0.22, length(h));
+    float far = smoothstep(0.02, 0.06, fwidth(q.x * 28.0));
+    base = mix(uColor, uColor2, mix(hole, 0.45, far));
+  #elif defined(HAZARD)
+    // Yellow and black warning stripes.
+    float st = step(0.5, fract((q.x + q.y) * 1.4));
+    base = mix(uColor, uColor2, st) * (0.8 + 0.25 * vnoise(q * 9.0));
+    rough = 0.6;
+  #elif defined(GRAFFITI)
+    // Old paint on the wall: blotches of colour, drips and tags, worn back to the wall in places.
+    vec3 wall = uColor * (0.75 + 0.3 * fbm(q * 0.8));
+    float blob = smoothstep(0.55, 0.62, fbm(q * 0.35 + 11.0));
+    float tag = smoothstep(0.08, 0.0, abs(sin(q.x * 3.1 + sin(q.y * 4.7) * 1.7) * 0.5 + 0.5 - fbm(q * 0.6 + 3.0))) * step(0.55, vnoise(q * 0.25 + 5.0));
+    vec3 paint = mix(uColor2, uColor2.gbr, step(0.5, vnoise(floor(q * 0.3) + 2.0)));
+    float worn = smoothstep(0.35, 0.6, vnoise(q * 4.0));
+    base = mix(wall, paint, max(blob, tag) * worn);
+  #elif defined(SEATS)
+    // Rows of folding seats seen from the front: a backrest per seat, a dark gap between them.
+    vec2 s = vec2(fract(q.x * 2.0), fract(q.y));
+    float back = step(0.08, s.x) * step(s.x, 0.92) * step(0.3, s.y);
+    base = mix(uColor2, uColor * (0.85 + 0.3 * hash11(floor(q.x * 2.0))), back);
+  #elif defined(PANELS)
+    // Sheet metal in panels with seams and a few rivets.
+    vec2 pn = fract(q / vec2(1.2, 2.4));
+    float seam = 1.0 - smoothstep(0.0, 0.012 + fwidth(pn.x), min(min(pn.x, 1.0 - pn.x), min(pn.y, 1.0 - pn.y)));
+    base = uColor * (0.85 + 0.25 * vnoise(q * 3.0)) * (1.0 - 0.45 * seam);
+    base = mix(base, uColor2, smoothstep(0.6, 0.85, fbm(q * 1.5)) * 0.5);
+  #endif
+  #ifdef SCAN
+    // The scanned material: its colour (tinted), its roughness, and its relief on the normal.
+    vec2 suv = planar(vWPos, n) / uScanScale;
+    // (The normal map carries the normal's x and y, and the roughness in its blue.)
+    vec3 packed = texture2D(uScanN, suv).xyz;
+    base = texture2D(uScanC, suv).rgb * uColor * (0.88 + 0.24 * vnoise(suv * 0.23));
+    rough = clamp(packed.z * uRough, 0.04, 1.0);
+    vec2 nm = packed.xy * 2.0 - 1.0;
+    vec3 an = abs(n);
+    vec3 tx = an.y > an.x && an.y > an.z ? vec3(1.0, 0.0, 0.0) : an.x > an.z ? vec3(0.0, 0.0, 1.0) : vec3(1.0, 0.0, 0.0);
+    vec3 ty = an.y > an.x && an.y > an.z ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+    n = normalize(n + (tx * nm.x - ty * nm.y) * uBump);
   #endif
   float ao = mix(0.35, 1.0, vAo);
 
@@ -115,6 +178,7 @@ void main() {
   vec3 light = uAmbient * (0.6 + 0.4 * n.y);
   light += glowCol * max(0.0, dot(n, toGlow) * 0.7 + 0.3);
   light += roomLights(vWPos, n);
+  light += beamPools(vWPos, n);
   light += uWash * 0.06 * max(0.0, n.y) * uEnergy;
   light += vec3(1.0, 0.5, 0.2) * uFire * 0.6 / (1.0 + gd * gd * 0.003);
   light += mix(vec3(1.0), uAccent, 0.3) * ballSpots(vWPos);
@@ -153,6 +217,11 @@ const DEFINE: Record<Pattern, string | null> = {
   fabric: 'FABRIC',
   grass: 'GRASS',
   glass: null,
+  grille: 'GRILLE',
+  hazard: 'HAZARD',
+  graffiti: 'GRAFFITI',
+  seats: 'SEATS',
+  panels: 'PANELS',
 };
 
 /** A venue surface: lit by the stage's glow and the room's lights, fogged by the haze. */
@@ -162,15 +231,20 @@ export function surface(o: SurfaceOptions): THREE.ShaderMaterial {
   const d = DEFINE[pattern];
   if (d) defines[d] = '';
   if (o.mirror) defines.MIRROR = '';
+  if (o.scan) defines.SCAN = '';
   const glass = pattern === 'glass';
   return new THREE.ShaderMaterial({
     name: `surface-${pattern}`,
     uniforms: {
       ...shared,
-      uColor: { value: new THREE.Color(o.color) },
+      uColor: { value: new THREE.Color(o.scan ? (o.tint ?? 0xffffff) : o.color) },
+      uScanC: { value: o.scan?.color ?? null },
+      uScanN: { value: o.scan?.normal ?? null },
+      uScanScale: { value: o.scanScale ?? 2.5 },
+      uBump: { value: o.bump ?? 0.9 },
       uColor2: { value: new THREE.Color(o.color2 ?? o.color) },
       uEmissive: { value: new THREE.Color(o.emissive ?? 0x000000) },
-      uRough: { value: o.rough ?? (glass ? 0.05 : 0.8) },
+      uRough: { value: o.scan ? (o.scanRough ?? 1) : (o.rough ?? (glass ? 0.05 : 0.8)) },
       uMetal: { value: o.metal ?? 0 },
       uScale: { value: o.scale ?? 1 },
       uWet: { value: o.wet ?? 0.5 },
@@ -178,7 +252,7 @@ export function surface(o: SurfaceOptions): THREE.ShaderMaterial {
     defines,
     vertexShader: STATIC_VERTEX,
     fragmentShader: FRAGMENT,
-    vertexColors: false,
+    vertexColors: !!o.ao,
     side: o.side ?? THREE.FrontSide,
   });
 }
@@ -221,4 +295,9 @@ export function glow(color: THREE.ColorRepresentation = 0xffffff, level = 1, ins
         ${OUTPUT}
       }`,
   });
+}
+
+/** A surface of a venue's Blender model: baked contact shading, drawn from both sides. */
+export function modelSurface(o: SurfaceOptions): THREE.ShaderMaterial {
+  return surface({ ...o, ao: true, side: THREE.DoubleSide });
 }

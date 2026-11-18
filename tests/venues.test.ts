@@ -5,7 +5,7 @@ import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
   it('knows every venue and the random choice', () => {
-    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'warehouse', 'arena', 'basement', 'bar']);
+    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'monolith', 'warehouse', 'arena', 'basement', 'bar']);
     for (const v of VENUE_IDS) expect(isVenueChoice(v)).toBe(true);
     expect(isVenueChoice('random')).toBe(true);
     expect(isVenueChoice('stadium')).toBe(false);

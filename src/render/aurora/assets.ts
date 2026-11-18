@@ -124,7 +124,7 @@ export function watchVenue(cb: (share: number) => void): () => void {
   cb(asked ? arrived / asked : 0);
   return () => void watchers.delete(cb);
 }
-function part<T>(p: Promise<T>): Promise<T> {
+export function part<T>(p: Promise<T>): Promise<T> {
   asked++;
   return p.then((v) => {
     arrived++;
@@ -135,7 +135,7 @@ function part<T>(p: Promise<T>): Promise<T> {
 
 const base = `${import.meta.env.BASE_URL}stage/aurora/`;
 let loader: GLTFLoader | null = null;
-function gltf(): GLTFLoader {
+export function gltf(): GLTFLoader {
   if (loader) return loader;
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
   return (loader = new GLTFLoader().setDRACOLoader(draco));

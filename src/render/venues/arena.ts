@@ -1,196 +1,148 @@
 import * as THREE from 'three';
 import { LEVEL_SHARE } from '../../game/graphics';
-import type { Fixture, FireworkSpec } from '../aurora/assets';
-import { makeBand } from '../aurora/figures';
 import { COMMON, OUTPUT, shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
-import { Builder, disposeTree } from './kit/build';
-import { fillCrowd } from './kit/crowd';
+import { Bulbs } from './kit/bulbs';
+import { bandOn, busyOf, fountains } from './kit/common';
+import { dj, fillCrowd } from './kit/crowd';
 import { Lasers } from './kit/lasers';
 import { LedScreen } from './kit/led';
+import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { gearRoles } from './kit/roles';
 import { shot } from './kit/shots';
-import { glow, surface } from './kit/surface';
+import { glow, modelSurface, surface } from './kit/surface';
+import { loadScans } from './kit/textures';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 
-/** The round stage in the middle: radius and height. */
-const STAGE_R = 7;
-const DECK = 1.6;
-/** The arena floor's radius, and the tiers of seats round it. */
-const FLOOR_R = 34;
-const TIERS = 14;
-const TIER_DEPTH = 1.9;
-const TIER_RISE = 1.45;
-const ROOF = 36;
-/** Height of the step at a distance from the middle. */
-function tierHeight(r: number): number {
-  if (r < FLOOR_R + 1.5) return 0;
-  const i = Math.min(TIERS - 1, Math.floor((r - FLOOR_R - 1.5) / TIER_DEPTH));
-  return 2 + i * TIER_RISE;
+interface ArenaData extends ModelData {
+  tiers: { r0: number; y0: number; depth: number; rise: number; count: number; crossAisle: number };
+  floor: number;
+  stage: { r: number; y: number };
+  aisles: number[];
+  crowd: { inner: number; outer: number; obstacles: { x: number; z: number; w: number; d: number }[] };
+  halos: number;
 }
 
 /**
- * Arena 360: a show in the round. The band on a turning stage in the middle of the floor, the
- * crowd on every side and up the steep tiers to the roof, a drum of LEDs hanging over the stage
- * with rings of light that tilt and sink around it, a dome of lasers, and in the quiet parts a
- * sea of phone lights in the stands.
+ * Arena 360: a show in the round under a steel dome, modelled in Blender
+ * (tools/stage/venues/arena.py). Halos of light hang over the floor and tilt and breathe with the
+ * music, a lantern of light burns over the stage, a ribbon of LEDs runs round the stands, lamps
+ * trace every rim, lasers spread a dome from the lantern, and in the quiet parts phone lights come
+ * out in the seats. The band plays at the front of the island, the DJ on a plinth in its middle.
  */
-export function buildArena(ctx: VenueContext): Venue {
+export async function buildArena(ctx: VenueContext): Promise<Venue> {
   const { g, menu } = ctx;
-  const b = new Builder();
-  const floorMat = surface({ pattern: 'concrete', color: 0x1a1b20, color2: 0x0e0f12, rough: 0.3, scale: 2.5, mirror: true, wet: 0.75 });
-  const seats = surface({ pattern: 'fabric', color: 0x141a2c, rough: 0.9, scale: 0.25 });
-  const wall = surface({ pattern: 'concrete', color: 0x16161a, color2: 0x0c0c0e, rough: 0.9, scale: 3 });
-  const black = surface({ color: 0x0a0a0c, rough: 0.5 });
-  const steel = surface({ pattern: 'metal', color: 0x2c2e34, rough: 0.4, metal: 0.85, scale: 2 });
-  const deckTop = surface({ color: 0x0e0e12, rough: 0.18 });
+  const model = await loadModel('arena');
+  const data = model.data as ArenaData;
+  const scans = await loadScans(['asphalt', 'concrete_wall', 'steel_paint', 'carpet'], g, ctx.anisotropy);
+  const gear = gearRoles();
+  const coreGlow = glow(0xffffff, 2);
+  const dressed = dressModel(model, {
+    ...gear.roles,
+    Floor: modelSurface({
+      pattern: 'concrete',
+      color: 0x1a1b20,
+      color2: 0x0e0f12,
+      rough: 0.3,
+      scale: 2.5,
+      mirror: true,
+      wet: 0.75,
+      scan: scans.asphalt,
+      scanScale: 4,
+      tint: 0x6a6c74,
+      scanRough: 0.45,
+    }),
+    Concrete: modelSurface({
+      pattern: 'concrete',
+      color: 0x3a3a40,
+      color2: 0x1c1c20,
+      rough: 0.9,
+      scale: 3,
+      scan: scans.concrete_wall,
+      scanScale: 5,
+      tint: 0x8a8c94,
+    }),
+    Stage: modelSurface({ color: 0x0c0c10, rough: 0.15 }),
+    Glass: modelSurface({ pattern: 'glass', color: 0x0c1420, rough: 0.06, emissive: 0x03060a }),
+    Roof: modelSurface({
+      pattern: 'panels',
+      color: 0x14161a,
+      color2: 0x0a0a0c,
+      rough: 0.8,
+      metal: 0.3,
+      scale: 2,
+      scan: scans.steel_paint,
+      scanScale: 4,
+      tint: 0x30343a,
+    }),
+    Hazard: modelSurface({ pattern: 'hazard', color: 0xe8b400, color2: 0x111111, rough: 0.6, scale: 0.5 }),
+    Carpet: modelSurface({ pattern: 'fabric', color: 0x2a1418, rough: 1, scale: 0.4, scan: scans.carpet, scanScale: 1.5, tint: 0x8a4a54 }),
+    'Glow.Exit': glow(0x20ff70, 1.6),
+    'Glow.Warm': glow(0xffb060, 1.4),
+    'Glow.Lamp': glow(0xe8f0ff, 1.6),
+    'Glow.Core': coreGlow,
+  });
+  const root = dressed.root;
+  const owned: { dispose(): void }[] = [dressed];
 
-  b.add(floorMat, new THREE.CircleGeometry(FLOOR_R + 2, 96).rotateX(-Math.PI / 2));
-  // The tiers: a riser and a tread for each step, round the whole arena.
-  for (let i = 0; i < TIERS; i++) {
-    const r = FLOOR_R + 1.5 + i * TIER_DEPTH;
-    const y = 2 + i * TIER_RISE;
-    const riser = new THREE.CylinderGeometry(r, r, y, 120, 1, true);
-    riser.translate(0, y / 2, 0);
-    b.add(i === 0 ? black : seats, riser);
-    b.add(seats, new THREE.RingGeometry(r, r + TIER_DEPTH, 120, 1).rotateX(-Math.PI / 2).translate(0, y, 0));
-  }
-  const outer = FLOOR_R + 1.5 + TIERS * TIER_DEPTH;
-  const wallGeo = new THREE.CylinderGeometry(outer, outer, ROOF, 120, 1, true);
-  wallGeo.translate(0, ROOF / 2, 0);
-  b.add(wall, wallGeo);
-  b.add(black, new THREE.CircleGeometry(outer, 120).rotateX(Math.PI / 2).translate(0, ROOF, 0));
-  // Catwalk rings and spokes under the roof.
-  for (const r of [12, 26, 45]) {
-    const n = Math.round(r * 1.2);
-    for (let k = 0; k < n; k++) {
-      const a0 = (k / n) * Math.PI * 2;
-      const a1 = ((k + 1) / n) * Math.PI * 2;
-      const y = r === 12 ? 20 : 31;
-      b.truss(steel, [Math.cos(a0) * r, y, Math.sin(a0) * r], [Math.cos(a1) * r, y, Math.sin(a1) * r], 0.7);
-    }
-  }
-  for (let k = 0; k < 8; k++) {
-    const a = (k / 8) * Math.PI * 2;
-    b.truss(steel, [Math.cos(a) * 12, 20, Math.sin(a) * 12], [Math.cos(a) * 45, 31, Math.sin(a) * 45], 0.6);
-    b.rod(steel, [Math.cos(a) * 9, 17.5, Math.sin(a) * 9], [Math.cos(a) * 9, ROOF, Math.sin(a) * 9], 0.03, 4);
-  }
-  // The stage: a drum with a glossy top, a turntable inset, and a drum riser in the middle.
-  b.drum(black, STAGE_R, DECK, [0, 0, 0], 72);
-  b.add(deckTop, new THREE.CircleGeometry(STAGE_R - 0.15, 72).rotateX(-Math.PI / 2).translate(0, DECK + 0.01, 0));
-  b.drum(black, 2, 0.4, [0, DECK, 0], 36);
-  // Speaker hangs over the stage, four ways.
-  for (let k = 0; k < 4; k++) {
-    const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
-    for (let j = 0; j < 8; j++) b.box(black, [1.6, 0.6, 1], [Math.cos(a) * 10.5, 16 - j * 0.62, Math.sin(a) * 10.5], -a + Math.PI / 2);
-  }
-  const root = b.build('arena');
-  const owned: { dispose(): void }[] = [{ dispose: () => disposeTree(root) }];
-
-  // The LED drum over the stage, and a band of LEDs round the stage's edge.
-  const drum = new LedScreen([480, 60], ['rings', 'kaleido', 'tunnel', 'bars', 'plasma', 'stripes'], 2, 8);
-  const drumMesh = new THREE.Mesh(new THREE.CylinderGeometry(9, 9, 5.5, 96, 1, true), drum.material);
-  drumMesh.material.side = THREE.DoubleSide;
-  drumMesh.position.y = 15;
-  const edge = new LedScreen([600, 8], ['bars', 'stripes', 'rings'], 1.6, 9);
-  const edgeMesh = new THREE.Mesh(new THREE.CylinderGeometry(STAGE_R + 0.02, STAGE_R + 0.02, DECK - 0.3, 96, 1, true), edge.material);
-  edgeMesh.position.y = DECK / 2;
-  root.add(drumMesh, edgeMesh);
-  owned.push(drum, edge);
-
-  // Rings of light that tilt and sink round the drum.
-  const ringMats = [0, 1, 2].map(() => glow(0xffffff, 2));
-  const rings = [12.5, 16, 19.5].map((r, i) => {
-    const mesh = new THREE.Mesh(new THREE.TorusGeometry(r, 0.09, 6, 160), ringMats[i]);
-    mesh.rotation.x = Math.PI / 2;
-    mesh.position.y = 18;
-    root.add(mesh);
-    return mesh;
+  // The halos' tubes, each a glow of its own.
+  const halos = Array.from({ length: data.halos ?? 0 }, (_, i) => {
+    const material = glow(0xffffff, 2);
+    const part = dressed.moving.get(`halo_${i}`) as THREE.Mesh | undefined;
+    if (part) part.material = material;
+    owned.push(material);
+    return material;
   });
 
-  // Phones in the stands: points that come up in the quiet parts.
-  const phones = phoneLights(g.crowd === 'off' ? 0 : g.crowd === 'low' ? 900 : g.crowd === 'medium' ? 2200 : 4200, outer);
+  const edge = new LedScreen([440, 10], ['bars', 'stripes', 'rings', 'solid'], 1.7, 9);
+  const ribbon = new LedScreen([1500, 5], ['stripes', 'solid', 'bars', 'stripes'], 1.6, 10);
+  const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 2, 11);
+  const screens = { edge, ribbon, booth };
+  for (const [key, scr] of Object.entries(screens)) for (const mesh of dressed.screens.get(key) ?? []) mesh.material = scr.material;
+  owned.push(edge, ribbon, booth);
+
+  // Seats (one draw for all of them) and the lamps on every rim.
+  const seatMat = surface({ color: 0x1a2440, rough: 0.6 });
+  const seats = instances(dressed.protos.get('seat')!, data.instances.seat ?? [], seatMat);
+  const bulbs = new Bulbs(dressed.protos.get('bulb')!, data.instances.bulb ?? [], 0xe8f0ff);
+  root.add(seats, bulbs.mesh);
+  owned.push(seatMat, bulbs);
+
+  const T = data.tiers;
+  const outer = T.r0 + T.count * T.depth;
+  const tierOf = (r: number) => Math.min(T.count - 1, Math.max(0, Math.floor((r - T.r0) / T.depth)));
+  const tierHeight = (r: number) => (r < T.r0 ? 0 : T.y0 + tierOf(r) * T.rise);
+  const phones = phoneLights(g.crowd === 'off' ? 0 : g.crowd === 'low' ? 900 : g.crowd === 'medium' ? 2200 : 4200, T.r0, outer, tierHeight);
   root.add(phones.points);
   owned.push(phones);
 
   const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 96 : 200);
   root.add(lasers.mesh);
+  const core = new THREE.Vector3(...(data.sources['laser.core']?.[0] ?? [0, 9.5, 0]));
+  const edgeSrc = (data.sources['laser.edge'] ?? []).map((p) => new THREE.Vector3(...p));
 
-  // Moving heads: a ring over the stage into the floor, the catwalk's ring onto the stage, a ring
-  // on the stage's edge pointing up.
-  const fixtures: Fixture[] = [];
-  for (let k = 0; k < 24; k++) {
-    const a = (k / 24) * Math.PI * 2;
-    fixtures.push({
-      group: 'Ring',
-      pos: [Math.cos(a) * 12, 19.6, Math.sin(a) * 12],
-      dir: [Math.cos(a) * 0.55, -1, Math.sin(a) * 0.55],
-      length: 32,
-      spread: 0.04,
-    });
-  }
-  for (let k = 0; k < 16; k++) {
-    const a = (k / 16) * Math.PI * 2 + 0.2;
-    fixtures.push({
-      group: 'Catwalk',
-      pos: [Math.cos(a) * 45, 30.4, Math.sin(a) * 45],
-      dir: [-Math.cos(a), -0.72, -Math.sin(a)],
-      length: 56,
-      spread: 0.022,
-    });
-  }
-  for (let k = 0; k < 12; k++) {
-    const a = (k / 12) * Math.PI * 2;
-    fixtures.push({
-      group: 'Floor',
-      pos: [Math.cos(a) * (STAGE_R - 0.4), DECK + 0.15, Math.sin(a) * (STAGE_R - 0.4)],
-      dir: [Math.cos(a) * 0.3, 1, Math.sin(a) * 0.3],
-      length: 18,
-      spread: 0.035,
-    });
-  }
-
-  const around = (n: number, r: number, y: number, phase = 0): Vec3[] =>
-    Array.from({ length: n }, (_, k) => {
-      const a = (k / n) * Math.PI * 2 + phase;
-      return [Math.cos(a) * r, y, Math.sin(a) * r];
-    });
-  const fireworks: FireworkSpec[] = around(8, STAGE_R - 0.3, DECK, Math.PI / 8).map((p, k) => ({
-    origin: p,
-    n: 6,
-    spread: 6,
-    length: [6, 9],
-    lean: 0,
-    side: k % 2 === 1,
-  }));
-
-  // The band in the round: drums in the middle, the others out at the edge, each facing a side.
-  const band: Record<string, Vec3> = {
-    vox: [0, DECK, 4.2],
-    lead: [-4.2, DECK, -1.5],
-    bass: [4.2, DECK, -1.5],
-    drums: [0, DECK + 0.4, -0.4],
-  };
-  const players = makeBand({ band }, ctx.cast.band.data.band ?? {}, ctx.focus);
-  const facing: Record<string, number> = { vox: 0, lead: -1.9, bass: 1.9, drums: 0 };
-  for (const p of players) p.yaw = facing[p.part ?? ''] ?? 0;
+  // The band faces out from the island toward the side they stand on.
+  const { band, players } = bandOn(data, ctx.cast, ctx.focus, (p) => [p[0] * 3, p[2] * 3 + 6]);
+  const djAt = data.marks.dj;
 
   const shots = [
-    shot('front', [0, 4.2, 30], [0, 6, 0], 70, 'orbit', 0.35, 'all', 3),
-    shot('hero', [44, 26, 44], [0, 5, 0], 62, 'orbit', 0.45, 'all', 2),
-    shot('crowd', [11, 2.2, 13], [0, 4, 0], 80, 'orbit', 0.3, 'busy', 2),
-    shot('close', [3.5, 3.4, 9.5], [0, 3, 2.5], 60, 'orbit', 0.25, 'busy', 1.5),
-    shot('aerial', [0.5, 32, 3], [0, 0, 0], 86, 'orbit', 0.9, 'all', 1),
-    shot('stands', [0, 22, 56], [0, 6, 0], 66, 'orbit', 0.3, 'all', 1.2),
-    shot('wide-left', [-28, 9, 18], [0, 8, 0], 74, 'orbit', 0.4, 'all', 1.2),
-    shot('low-gate', [0, 1.2, 8.6], [0, 15, 0], 92, 'orbit', 0.5, 'peak', 1.3),
-    shot('band', [0, 5, 14], [0, 2.6, 0], 66, 'orbit', 0.5, 'busy', 1.4),
+    shot('front', [0, 4.2, 28], [0, 7, 0], 74, 'orbit', 0.3, 'all', 3),
+    shot('hero', [24, 18.6, 49], [0, 7, 0], 62, 'orbit', 0.45, 'all', 2),
+    shot('crowd', [10, 2.2, 15], [0, 5, 0], 82, 'orbit', 0.3, 'busy', 2),
+    shot('close', [1.5, 3.6, 12.5], [0, 3, 2], 62, 'orbit', 0.25, 'busy', 1.6),
+    shot('aerial', [0.5, 27, 20], [0, 0, -4], 96, 'orbit', 0.9, 'all', 1),
+    shot('stands', [-30, 14, 40], [0, 8, 0], 68, 'orbit', 0.3, 'all', 1.2),
+    shot('wide-left', [-26, 8, 18], [0, 10, 0], 78, 'orbit', 0.4, 'all', 1.2),
+    shot('low-gate', [0, 2.6, 9.4], [0, 16, 0], 96, 'orbit', 0.5, 'peak', 1),
+    shot('rig', [0, 9, 26], [0, 17, 0], 78, 'orbit', 0.5, 'peak', 1),
+    shot('dj', [2.2, djAt[1] + 1.9, djAt[2] + 5.4], [0, djAt[1] + 1.2, djAt[2]], 54, 'orbit', 0.4, 'busy', 1.2),
+    shot('band', [0, 4.6, 13.5], [0, 2.8, 2], 64, 'orbit', 0.5, 'busy', 1.4),
     ...Object.entries(band).map(([key, p]) => {
       const name = key === 'vox' ? 'vocals' : key;
-      const out = Math.atan2(p[0], p[2] + (key === 'drums' ? 1 : 0));
-      const d = key === 'drums' ? 6 : 5;
+      const out = Math.atan2(p[0], p[2] + 1.5);
       return shot(
         `band-${name}`,
-        [p[0] + Math.sin(out) * d + 1.2, p[1] + 1.9, p[2] + Math.cos(out) * d],
+        [p[0] + Math.sin(out) * 5 + 1.2, p[1] + 1.9, p[2] + Math.cos(out) * 5],
         [p[0], p[1] + 1.2, p[2]],
         46,
         'truck',
@@ -203,62 +155,68 @@ export function buildArena(ctx: VenueContext): Venue {
   const low = shots.filter((s) => s.pos[1] < 5).map((s) => s.pos);
 
   const share = LEVEL_SHARE[g.crowd];
-  const floorCrowd = fillCrowd(
+  const sync = ctx.cast.crowd.data.sync;
+  const C = data.crowd;
+  const audience = fillCrowd(
     {
-      bounds: [-FLOOR_R, -FLOOR_R, FLOOR_R, FLOOR_R],
+      bounds: [-C.outer, -C.outer, C.outer, C.outer],
       step: 0.84,
       density: (x, z) => {
         const r = Math.hypot(x, z);
-        return r < STAGE_R + 2.6 || r > FLOOR_R - 0.6 ? 0 : Math.max(0.35, 1.05 - (r - STAGE_R) / 40);
+        if (r < C.inner || r > C.outer) return 0;
+        if (C.obstacles.some((o) => Math.abs(x - o.x) < o.w / 2 + 0.3 && Math.abs(z - o.z) < o.d / 2 + 0.3)) return 0;
+        return Math.max(0.35, 1.05 - (r - C.inner) / 40);
       },
       face: () => [0, 0],
     },
     ctx.characters,
     share,
     low,
-    ctx.cast.crowd.data.sync,
+    sync,
     53,
   );
-  const stands = fillCrowd(
-    {
-      bounds: [-outer, -outer, outer, outer],
-      step: 1.0,
-      density: (x, z) => {
-        const r = Math.hypot(x, z);
-        if (r < FLOOR_R + 1.7 || r > outer - 0.6) return 0;
-        // Keep to the middle of each tread.
-        const f = (r - FLOOR_R - 1.5) / TIER_DEPTH;
-        return Math.abs(f - Math.floor(f) - 0.5) < 0.3 ? 0.75 : 0;
+  // People in the stands, on their feet before their seats; the stairways and the cross aisle stay free.
+  audience.push(
+    ...fillCrowd(
+      {
+        bounds: [-outer, -outer, outer, outer],
+        step: 0.72,
+        density: (x, z) => {
+          const r = Math.hypot(x, z);
+          if (r < T.r0 + 0.3 || r > outer - 0.3) return 0;
+          const f = (r - T.r0) / T.depth;
+          if (Math.floor(f) === T.crossAisle) return 0;
+          const a = Math.atan2(x, z);
+          if (data.aisles.some((s) => Math.abs(Math.atan2(Math.sin(a - s), Math.cos(a - s))) * r < 1.1)) return 0;
+          return f - Math.floor(f) > 0.45 && f - Math.floor(f) < 0.9 ? 0.95 : 0;
+        },
+        face: () => [0, 0],
+        ground: (x, z) => tierHeight(Math.hypot(x, z)),
+        wander: 0.3,
       },
-      face: () => [0, 0],
-      ground: (x, z) => tierHeight(Math.hypot(x, z)),
-      wander: 0.3,
-    },
-    ctx.characters,
-    share * 0.8,
-    [],
-    ctx.cast.crowd.data.sync,
-    59,
+      ctx.characters,
+      share,
+      [],
+      sync,
+      59,
+    ),
   );
-  const audience = [...floorCrowd, ...stands];
+  if (djAt) audience.push(dj(ctx.characters, djAt, 0));
 
   const L = shared.uLight.value;
   const LC = shared.uLightCol.value;
-  const ringY = [18, 18, 18];
   const c1 = new THREE.Color();
   const c2 = new THREE.Color();
-  const center = new THREE.Vector3(0, 13.5, 0);
   const tmpA = new THREE.Vector3();
   const tmpB = new THREE.Vector3();
-  const edgeSrc = around(8, STAGE_R - 0.2, DECK + 0.3).map((p) => new THREE.Vector3(...p));
   let laserLook = 0;
 
   const bind = () => {
-    shared.uGlowPos.value.set(0, 15, 0);
-    shared.uHazeFar.value.setRGB(0.006, 0.007, 0.012);
-    shared.uHazeDensity.value = 0.011;
-    shared.uAmbient.value.setRGB(0.012, 0.014, 0.022);
-    shared.uGlowLight.value.set(2.2, 22);
+    shared.uGlowPos.value.set(0, 13, 0);
+    shared.uHazeFar.value.setRGB(0.006, 0.008, 0.012);
+    shared.uHazeDensity.value = 0.0095;
+    shared.uAmbient.value.setRGB(0.014, 0.017, 0.024);
+    shared.uGlowLight.value.set(2.4, 26);
     shared.uGlowFall.value = 0.003;
     shared.uBall.value.w = 0;
   };
@@ -266,79 +224,83 @@ export function buildArena(ctx: VenueContext): Venue {
   const update = (f: VenueFrame) => {
     const s = f.show;
     const t = f.time;
-    const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
+    const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
-    if (f.beat === 'downbeat' && s.bar % 8 === 0) drum.next(s.bar / 8);
-    if (f.beat === 'downbeat' && s.bar % 4 === 0) edge.next(s.bar / 4);
-    drum.level = 1.7 + 0.8 * f.barPulse + 0.5 * s.overdrive;
-    drum.update(f.dt);
-    edge.update(f.dt);
-    drumMesh.rotation.y += f.dt * 0.05;
+    if (f.beat === 'downbeat') {
+      if (s.bar % 4 === 0) edge.next(s.bar / 4);
+      if (s.bar % 8 === 2) ribbon.next(s.bar / 8);
+      if (s.bar % 4 === 1) booth.next(s.bar / 4);
+    }
+    for (const scr of Object.values(screens)) scr.update(f.dt);
+    bulbs.update(f, 1.1);
+    gear.jog.uniforms.uLevel.value = 1.4 + 2 * f.pulse;
+    gear.jog.uniforms.uColor.value.copy(f.accent);
+    gear.meter.uniforms.uLevel.value = 1 + 2.5 * f.low;
 
-    // The rings: level and high when it is calm; tilting against each other and sinking toward
-    // the stage as it builds; in a peak they swing on the beat.
-    rings.forEach((ring, i) => {
-      const want = 18 + i * 1.5 - busy * (4 + i * 1.5) - s.overdrive * 3;
-      ringY[i] += (want - ringY[i]) * Math.min(1, f.dt * 1.2);
-      ring.position.y = ringY[i];
-      const tilt = (0.05 + 0.22 * busy) * (peak ? Math.sin(f.clock * Math.PI * 0.5 + i * 2) : Math.sin(t * 0.3 + i * 2));
-      ring.rotation.set(Math.PI / 2 + tilt, (i - 1) * 0.3 * busy * Math.sin(t * 0.2), t * 0.1 * (i - 1));
-      const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - i * 0.33) * Math.PI)), 4);
-      ringMats[i].uniforms.uColor.value.copy(i % 2 ? f.accent : f.key);
-      ringMats[i].uniforms.uLevel.value = (0.8 + 2.2 * busy) * (0.5 + 0.5 * chase) + s.overdrive * 2;
+    // The halos: cold white and steady when it is calm; a pulse runs from halo to halo on the
+    // beat as it builds; in a peak they take the show's colours and flare on the bar.
+    halos.forEach((m, i) => {
+      const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - i * 0.3) * Math.PI)), 4);
+      m.uniforms.uColor.value.copy(WHITE).lerp(i % 2 ? f.accent : f.key, peak ? 0.75 : 0.25 * busy);
+      m.uniforms.uLevel.value = 1.1 + 1.6 * busy * chase + 1.2 * f.barPulse * busy + 1.5 * s.overdrive;
     });
+    // The lantern over the stage burns with the bass.
+    coreGlow.uniforms.uColor.value.copy(f.key).lerp(WHITE, 0.55);
+    coreGlow.uniforms.uLevel.value = 1 + 2.4 * f.low + 1.4 * f.barPulse + 2 * s.overdrive;
 
-    // Phones come out when it is calm (and in the menus), and go away when it kicks off.
-    phones.material.uniforms.uOn.value +=
-      ((s.level === 'calm' || menu ? 1 : 0.15) - phones.material.uniforms.uOn.value) * Math.min(1, f.dt * 0.6);
-    phones.material.uniforms.uTime.value = t;
+    const u = phones.material.uniforms;
+    u.uOn.value += ((s.level === 'calm' || menu ? 1 : 0.15) - u.uOn.value) * Math.min(1, f.dt * 0.6);
+    u.uTime.value = t;
 
-    // Light on the floor from the drum and the rings.
-    L[0].set(0, 12, 0, 20);
+    // Light from the lantern and the halos on the island and the floor.
+    L[0].set(0, 11, 0, 20);
     LC[0]
       .copy(f.key)
-      .lerp(f.wash, 0.4)
-      .multiplyScalar(1.1 * shared.uScreenLevel.value);
+      .lerp(WHITE, 0.5)
+      .multiplyScalar(0.9 * (0.5 + 0.8 * f.low + 0.5 * busy));
     for (let k = 0; k < 4; k++) {
-      const a = (k / 4) * Math.PI * 2 + t * 0.2;
-      L[1 + k].set(Math.cos(a) * 18, ringY[1] - 1, Math.sin(a) * 18, 12);
-      LC[1 + k].copy(k % 2 ? f.accent : f.key).multiplyScalar(0.45 * (0.3 + busy));
+      const a = (k / 4) * Math.PI * 2 + 0.8;
+      L[1 + k].set(Math.sin(a) * 17, 12, Math.cos(a) * 17, 14);
+      LC[1 + k]
+        .copy(k % 2 ? f.accent : f.key)
+        .lerp(WHITE, 0.4)
+        .multiplyScalar(0.4 * (0.4 + busy));
     }
     L[5].set(0, 6, 0, 10);
     LC[5].setScalar(s.blinder * 3);
     for (let i = 6; i < 8; i++) LC[i].setRGB(0, 0, 0);
     shared.uFlash.value = s.blinder * 0.2;
 
-    // Lasers: a turning dome from over the stage out to the stands, and fans from the stage's edge.
+    // Lasers: a turning dome from the lantern out to the stands, fans from the island's edge.
     lasers.begin();
     if (f.beat === 'downbeat' && s.bar % 4 === 0) laserLook++;
     const lv = (menu ? 0.45 : 1) * (0.3 + 0.7 * busy) * 0.5;
-    c1.copy(f.key).lerp(WHITE, 0.1);
-    c2.copy(f.accent);
+    c1.copy(f.key).lerp(WHITE, 0.3);
+    c2.copy(f.accent).lerp(WHITE, 0.15);
     if (s.level !== 'calm' || menu) {
-      const n = 40;
-      const dip = laserLook % 2 ? -0.18 + 0.1 * Math.sin(t * 0.8) : -0.08;
+      const n = 44;
+      const dip = laserLook % 2 ? -0.16 + 0.1 * Math.sin(t * 0.8) : -0.05;
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2 + t * (laserLook % 2 ? 0.35 : -0.2);
         tmpA
           .set(Math.cos(a), dip + 0.05 * Math.sin(a * 3 + t), Math.sin(a))
           .normalize()
-          .multiplyScalar(60)
-          .add(center);
-        lasers.add(center, tmpA, k % 2 ? c1 : c2, lv);
+          .multiplyScalar(62)
+          .add(core);
+        lasers.add(core, tmpA, k % 2 ? c1 : c2, lv);
       }
     }
     if (peak)
-      edgeSrc.forEach((src, k) => {
-        const a = Math.atan2(src.z, src.x);
+      edgeSrc.forEach((p, k) => {
+        const a = Math.atan2(p.z, p.x);
         for (let j = -2; j <= 2; j++) {
           const yaw = a + j * 0.12 + Math.sin(t * 1.2 + k) * 0.2;
           tmpB
             .set(Math.cos(yaw), 0.35 + 0.25 * Math.sin(t + k + j), Math.sin(yaw))
             .normalize()
             .multiplyScalar(55)
-            .add(src);
-          lasers.add(src, tmpB, k % 2 ? c2 : c1, lv * 1.2);
+            .add(p);
+          lasers.add(p, tmpB, k % 2 ? c2 : c1, lv * 1.2);
         }
       });
     lasers.end(f.height);
@@ -349,14 +311,21 @@ export function buildArena(ctx: VenueContext): Venue {
     const t = s.time;
     switch (group) {
       case 'Ring':
+      case 'Halo':
         return {
-          pan: Math.sin(t * 0.5 + i * 0.5) * (0.15 + 0.25 * s.beamLevel),
-          tilt: Math.cos(t * 0.4 + i * 0.7) * 0.2,
-          level: s.beamLevel * (s.beamMode === 'chase' ? ((f.beats + i) % 6 === 0 ? 1 : 0.15) : 0.75),
-          color: i % 2 ? 'accent' : 'key',
+          pan: Math.sin(t * 0.5 + i * 0.5) * (0.15 + 0.3 * s.beamLevel),
+          tilt: Math.cos(t * 0.4 + i * 0.7) * 0.22,
+          level: s.level === 'calm' ? 0.22 : s.beamLevel * (s.beamMode === 'chase' ? ((f.beats + i) % 6 === 0 ? 1 : 0.15) : 0.75),
+          color: group === 'Halo' ? 'white' : i % 2 ? 'accent' : 'key',
         };
-      case 'Catwalk':
-        return { pan: Math.sin(t * 0.2 + i) * 0.06, tilt: Math.sin(t * 0.25 + i) * 0.05, level: 0.35 + 0.25 * f.barPulse, color: 'white' };
+      case 'Rim':
+        // The great ring of lights: long white shafts onto the island, a few at a time when calm.
+        return {
+          pan: Math.sin(t * 0.2 + i) * 0.05,
+          tilt: Math.sin(t * 0.25 + i) * 0.04,
+          level: (i % 4 === 0 ? 0.4 : 0.12 + 0.5 * s.beamLevel) + 0.25 * f.barPulse,
+          color: 'white',
+        };
       case 'Floor':
         return {
           pan: Math.sin(t * 0.7 + i) * 0.35,
@@ -368,30 +337,33 @@ export function buildArena(ctx: VenueContext): Venue {
     return undefined;
   };
 
+  const src = data.sources;
   return {
     root,
     shots,
     band,
     audience,
     players,
-    fixtures,
-    fireworks,
-    co2: around(8, STAGE_R - 0.4, DECK),
-    flames: around(10, STAGE_R + 0.6, 0.2, 0.1),
+    fixtures: data.fixtures,
+    fireworks: fountains(src.sparks, [6, 9]).map((f, k) => ({ ...f, side: k % 2 === 1 })),
+    co2: src.co2 ?? [],
+    flames: src.flames,
     flameMiddle: [0, 4],
-    confetti: around(4, 9.2, 12.5, Math.PI / 4).map((p) => ({ pos: p, dir: [p[0] * 0.1, 0.5, p[2] * 0.1] as Vec3 })),
+    confetti: (src.confetti ?? []).map((pos) => ({ pos, dir: [pos[0] * 0.1, 0.5, pos[2] * 0.1] as Vec3 })),
     looks: [
-      { key: [0.15, 0.85, 1], accent: [1, 0.2, 0.75], wash: [0.2, 0.15, 0.9] },
-      { key: [1, 0.75, 0.3], accent: [1, 1, 1], wash: [0.6, 0.3, 0.05] },
-      { key: [0.6, 0.3, 1], accent: [0.2, 0.5, 1], wash: [0.3, 0.05, 0.6] },
-      { key: [1, 0.2, 0.15], accent: [1, 0.6, 0.15], wash: [0.6, 0.05, 0.05] },
+      { key: [0.75, 0.95, 1], accent: [0.2, 0.9, 0.85], wash: [0.05, 0.3, 0.4] },
+      { key: [1, 1, 1], accent: [1, 0.75, 0.3], wash: [0.3, 0.3, 0.35] },
+      { key: [0.5, 0.4, 1], accent: [0.2, 0.7, 1], wash: [0.25, 0.05, 0.6] },
+      { key: [1, 0.2, 0.2], accent: [1, 0.95, 0.9], wash: [0.6, 0.05, 0.05] },
     ],
     exposure: 0.95,
-    bloom: [0.28, 0.5, 0.92],
-    hazeNear: [0.03, 0.03, 0.05],
-    background: [0.003, 0.003, 0.006],
+    bloom: [0.3, 0.5, 0.92],
+    hazeNear: [0.03, 0.04, 0.05],
+    background: [0.003, 0.004, 0.006],
     sparkGravity: -8,
     mirror: { level: 0 },
+    pools: 1.7,
+    grade: { contrast: 1.16, saturation: 0.95, vignette: 0.34, tint: [0.9, 1.0, 1.02] },
     bind,
     update,
     beam,
@@ -400,12 +372,12 @@ export function buildArena(ctx: VenueContext): Venue {
 }
 
 /** Phone torches held up in the stands: points that twinkle, each on a rhythm of its own. */
-function phoneLights(count: number, outer: number) {
+function phoneLights(count: number, r0: number, outer: number, tierHeight: (r: number) => number) {
   const pos = new Float32Array(count * 3);
   const seed = new Float32Array(count);
   for (let i = 0; i < count; i++) {
     const a = Math.random() * Math.PI * 2;
-    const r = FLOOR_R + 2 + Math.random() * (outer - FLOOR_R - 3);
+    const r = r0 + 0.5 + Math.random() * (outer - r0 - 1);
     pos.set([Math.cos(a) * r, tierHeight(r) + 1.6 + Math.random() * 0.4, Math.sin(a) * r], i * 3);
     seed[i] = Math.random();
   }
