@@ -155,6 +155,8 @@ void main() {
   light += fieldPools(vWPos.xz) * (0.35 + 0.65 * max(0.0, n.y)) * 0.42 * (1.0 - min(1.0, vLook.y));
   // The room's own lights and flashes (venues that have them).
   light += roomLights(vWPos, n) * (0.4 + 0.6 * packed);
+  // Where a beam lands on the crowd, heads and shoulders light up.
+  light += beamPools(vWPos, n) * (0.3 + 0.7 * smoothstep(0.8, 1.7, vWPos.y - vFoot));
   // The band stands in the front spots.
   vec3 spotDir = normalize(vec3(0.25, 0.75, 0.6));
   light += vLook.y * vec3(1.0, 0.92, 0.86) * (max(0.0, dot(n, spotDir)) * 0.85 + 0.22);

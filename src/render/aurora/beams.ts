@@ -36,6 +36,8 @@ export class Beams {
   private readonly base: THREE.Quaternion[];
   private readonly flareColor: Float32Array;
   private readonly flareSize: Float32Array;
+  /** Where each beam points this frame. */
+  private readonly aim: THREE.Vector3[];
 
   constructor(readonly fixtures: Fixture[]) {
     const n = fixtures.length;
@@ -122,6 +124,7 @@ export class Beams {
 
     this.base = fixtures.map((f) => new THREE.Quaternion().setFromUnitVectors(DOWN, new THREE.Vector3(...f.dir).normalize()));
     this.states = fixtures.map(() => ({ pan: 0, tilt: 0, color: new THREE.Color(1, 1, 1), level: 0 }));
+    this.aim = fixtures.map(() => new THREE.Vector3(0, -1, 0));
     this.group.add(this.mesh, this.flares);
   }
 
@@ -146,6 +149,7 @@ export class Beams {
       this.mesh.setColorAt(i, c.copy(st.color).multiplyScalar(st.level * 0.36));
       // The flare swells when the beam swings toward the camera.
       dir.copy(DOWN).applyQuaternion(q);
+      this.aim[i].copy(dir);
       toCam.copy(camera.position).sub(p).normalize();
       const facing = Math.pow(Math.max(0, dir.dot(toCam)), 6);
       const k = Math.min(0.8, st.level * 1.1);
@@ -157,6 +161,37 @@ export class Beams {
     this.flares.geometry.attributes.aColor.needsUpdate = true;
     this.flares.geometry.attributes.aSize.needsUpdate = true;
     this.flares.material.uniforms.uScale.value = scale;
+  }
+
+  /**
+   * Where the beams land on a level at `height` (the crowd's heads, a floor): the brightest few of
+   * them, into the shared uniforms that light the people and the venue's surfaces. A beam that
+   * ends before it gets there, or points up, lands nowhere.
+   */
+  pools(height: number) {
+    const found: { x: number; y: number; z: number; r: number; k: number; c: THREE.Color }[] = [];
+    this.fixtures.forEach((f, i) => {
+      const st = this.states[i];
+      const d = this.aim[i];
+      if (st.level < 0.02 || d.y > -0.08) return;
+      const t = (height - f.pos[1]) / d.y;
+      const len = f.length ?? LENGTH[f.group] ?? 100;
+      if (t <= 0 || t > len) return;
+      const r = 0.35 + t * (f.spread ?? SPREAD[f.group] ?? 0.012) * 1.15;
+      // As bright as the beam, spread over the pool: a narrow beam close by is a hot spot.
+      const k = Math.min(2.2, (st.level * 1.6) / (r * r)) * (1 - t / len);
+      found.push({ x: f.pos[0] + d.x * t, y: height, z: f.pos[2] + d.z * t, r, k, c: st.color });
+    });
+    found.sort((a, b) => b.k - a.k);
+    const pool = shared.uPool.value;
+    const col = shared.uPoolCol.value;
+    for (let i = 0; i < pool.length; i++) {
+      const p = found[i];
+      if (p) {
+        pool[i].set(p.x, p.y, p.z, p.r);
+        col[i].copy(p.c).multiplyScalar(p.k);
+      } else col[i].setRGB(0, 0, 0);
+    }
   }
 
   dispose() {

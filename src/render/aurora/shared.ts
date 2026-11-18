@@ -2,6 +2,8 @@ import * as THREE from 'three';
 
 /** How many of a venue's own lights the shaders take (see uLight). */
 export const LIGHTS = 8;
+/** How many pools of light from the beams the shaders take (see uPool). */
+export const POOLS = 12;
 
 /**
  * Uniforms every venue material shares: the clock, the music, the three colours of the light show,
@@ -79,6 +81,12 @@ export const shared = {
   uBallTurn: { value: 0 },
   /** How fast the stage's glow on the people falls off with distance (indoors it reaches less far). */
   uGlowFall: { value: 0.0006 },
+  /**
+   * Where the moving heads' beams land (see Beams.pools): centre and radius of each pool of light,
+   * and its colour times strength. Unused ones stay black.
+   */
+  uPool: { value: Array.from({ length: POOLS }, () => new THREE.Vector4(0, -1000, 0, 1)) },
+  uPoolCol: { value: Array.from({ length: POOLS }, () => new THREE.Color(0, 0, 0)) },
 };
 
 /** Noise, haze and the screen content, shared by the fragment shaders. */
@@ -114,6 +122,8 @@ uniform vec4 uLight[${LIGHTS}];
 uniform vec3 uLightCol[${LIGHTS}];
 uniform float uFlash;
 uniform float uGlowFall;
+uniform vec4 uPool[${POOLS}];
+uniform vec3 uPoolCol[${POOLS}];
 
 float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
 float hash21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -160,6 +170,18 @@ vec3 roomLights(vec3 p, vec3 n) {
     sum += uLightCol[i] * fall * max(0.0, dot(n, d / max(l, 1e-3)) * 0.75 + 0.25);
   }
   return sum;
+}
+
+/** The pools of light the beams lay on the floor and over the crowd, at p facing n. */
+vec3 beamPools(vec3 p, vec3 n) {
+  vec3 sum = vec3(0.0);
+  for (int i = 0; i < ${POOLS}; i++) {
+    float r = uPool[i].w;
+    float d = length(p.xz - uPool[i].xz);
+    float k = smoothstep(r, r * 0.45, d) * exp(-abs(p.y - uPool[i].y) * 0.35);
+    sum += uPoolCol[i] * k;
+  }
+  return sum * (0.35 + 0.65 * max(0.0, n.y));
 }
 
 /** Distance and height haze that picks up the stage's light near it. */

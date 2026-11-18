@@ -1,5 +1,6 @@
 import { detectGpu } from '../../game/graphics';
 import { loadCast, loadVenue, watchVenue } from '../aurora/assets';
+import { loadModel } from '../venues/kit/model';
 import { Stage } from './Stage';
 import type { Beat, FromStage, StageInput, StageRate, ToStage } from './protocol';
 
@@ -101,7 +102,7 @@ export function createStageHost(post: (m: FromStage) => void) {
       case 'preload':
         // The page picks the Auto graphics tier by the GPU's name: found here, off the page.
         post({ type: 'gpu', name: detectGpu() });
-        (m.venue === 'moonrise' ? loadVenue() : loadCast()).catch(() => undefined);
+        (m.venue === 'moonrise' ? loadVenue() : Promise.all([loadCast(), loadModel(m.venue)])).catch(() => undefined);
         return;
       case 'visible':
         visible = m.visible;

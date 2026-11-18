@@ -29,6 +29,14 @@
      a boosted stage would show as the panes suddenly changing colour then. */
   --glass-blur: blur(22px);
   --violet: #5b3ee0;
+  /* What the menus lay over the stage: a glow from below, two lights from the top corners and a
+     wash from top to bottom. Each venue tints them its own way (see the venue themes below). */
+  --menu-glow: #3a1f9c;
+  --veil-1: rgb(93 242 214 / 0.2);
+  --veil-2: rgb(124 92 255 / 0.4);
+  --veil-top: rgb(14 8 40 / 0.86);
+  --veil-mid: rgb(26 14 84 / 0.66);
+  --veil-bottom: rgb(14 8 40 / 0.9);
 
   /* Ink, tinted from the night */
   --ink: #f6f3ff;
@@ -77,6 +85,75 @@
 
   font-family: var(--font);
   font-stretch: 100%;
+}
+
+/* Venue themes: the night and the veil take the colours of the venue behind the menus (the root
+   carries data-venue), so the menus and the place feel like one. Moonrise keeps the defaults. */
+:root[data-venue='mainstage'] {
+  --night: #170914;
+  --deep: #3a1430;
+  --violet: #c2386e;
+  --menu-glow: #8a2a3c;
+  --veil-1: rgb(255 150 70 / 0.24);
+  --veil-2: rgb(255 70 140 / 0.36);
+  --veil-top: rgb(22 8 22 / 0.84);
+  --veil-mid: rgb(72 20 46 / 0.6);
+  --veil-bottom: rgb(20 8 18 / 0.9);
+}
+:root[data-venue='monolith'] {
+  --night: #07090c;
+  --deep: #1a2028;
+  --violet: #7d8894;
+  --menu-glow: #2a323c;
+  --veil-1: rgb(255 255 255 / 0.16);
+  --veil-2: rgb(150 190 220 / 0.2);
+  --veil-top: rgb(6 8 11 / 0.88);
+  --veil-mid: rgb(24 30 38 / 0.6);
+  --veil-bottom: rgb(6 8 10 / 0.92);
+}
+:root[data-venue='warehouse'] {
+  --night: #0c0607;
+  --deep: #2a0e10;
+  --violet: #b8242c;
+  --menu-glow: #5e1014;
+  --veil-1: rgb(210 220 255 / 0.12);
+  --veil-2: rgb(255 40 30 / 0.3);
+  --veil-top: rgb(12 6 7 / 0.88);
+  --veil-mid: rgb(42 12 12 / 0.62);
+  --veil-bottom: rgb(10 5 6 / 0.92);
+}
+:root[data-venue='arena'] {
+  --night: #050a1c;
+  --deep: #0e1d4a;
+  --violet: #2b6fe0;
+  --menu-glow: #13358a;
+  --veil-1: rgb(60 210 255 / 0.22);
+  --veil-2: rgb(255 60 180 / 0.26);
+  --veil-top: rgb(4 8 26 / 0.86);
+  --veil-mid: rgb(10 24 72 / 0.62);
+  --veil-bottom: rgb(4 8 24 / 0.9);
+}
+:root[data-venue='basement'] {
+  --night: #110504;
+  --deep: #34100a;
+  --violet: #c23a1c;
+  --menu-glow: #6a1408;
+  --veil-1: rgb(255 170 70 / 0.16);
+  --veil-2: rgb(255 50 30 / 0.32);
+  --veil-top: rgb(16 5 4 / 0.88);
+  --veil-mid: rgb(56 14 8 / 0.62);
+  --veil-bottom: rgb(14 5 4 / 0.92);
+}
+:root[data-venue='bar'] {
+  --night: #130806;
+  --deep: #3a1810;
+  --violet: #c25a24;
+  --menu-glow: #6e2a12;
+  --veil-1: rgb(255 180 90 / 0.24);
+  --veil-2: rgb(255 60 140 / 0.24);
+  --veil-top: rgb(20 9 6 / 0.86);
+  --veil-mid: rgb(62 24 14 / 0.6);
+  --veil-bottom: rgb(18 8 6 / 0.9);
 }
 :root[data-input='touch'] {
   --target: 3rem;
@@ -668,7 +745,7 @@ img.cover {
 .menu {
   position: absolute;
   inset: 0;
-  background: radial-gradient(120% 90% at 50% 120%, #3a1f9c, transparent 62%), var(--night);
+  background: radial-gradient(120% 90% at 50% 120%, var(--menu-glow), transparent 62%), var(--night);
 }
 .menu > .layer {
   position: absolute;
@@ -697,9 +774,9 @@ img.cover {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(70% 46% at 78% -6%, rgb(93 242 214 / 0.2), transparent 70%),
-    radial-gradient(60% 50% at 12% -10%, rgb(124 92 255 / 0.4), transparent 70%),
-    linear-gradient(180deg, rgb(14 8 40 / 0.86), rgb(26 14 84 / 0.66) 46%, rgb(14 8 40 / 0.9));
+    radial-gradient(70% 46% at 78% -6%, var(--veil-1), transparent 70%),
+    radial-gradient(60% 50% at 12% -10%, var(--veil-2), transparent 70%),
+    linear-gradient(180deg, var(--veil-top), var(--veil-mid) 46%, var(--veil-bottom));
   transition: opacity 0.5s;
 }
 .menu:is(.on-lobby, .on-results, .on-summary) .veil {
@@ -708,7 +785,7 @@ img.cover {
 /* The settings over a paused song: a menu of their own on top of it, under the action bar. */
 .settings-over {
   z-index: 35;
-  background: rgb(14 8 40 / 0.5);
+  background: color-mix(in srgb, var(--night) 50%, transparent);
   animation: fade-in 0.2s var(--ease);
 }
 /* The paused song shows through them, held still; its pause menu steps out of the way meanwhile. */
@@ -4830,8 +4907,8 @@ input.text {
 /* The lanes are read closely: the night behind them is a shade deeper than behind the menus. */
 .menu.on-editor .veil {
   background:
-    radial-gradient(70% 46% at 78% -6%, rgb(93 242 214 / 0.14), transparent 70%),
-    linear-gradient(180deg, rgb(14 8 40 / 0.93), rgb(22 12 72 / 0.84) 46%, rgb(14 8 40 / 0.95));
+    linear-gradient(rgb(0 0 0 / 0.45), rgb(0 0 0 / 0.45)), radial-gradient(70% 46% at 78% -6%, var(--veil-1), transparent 70%),
+    linear-gradient(180deg, var(--veil-top), var(--veil-mid) 46%, var(--veil-bottom));
 }
 
 .editor-head {

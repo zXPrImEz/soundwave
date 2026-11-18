@@ -1,215 +1,212 @@
 import * as THREE from 'three';
 import { LEVEL_SHARE } from '../../game/graphics';
-import type { Fixture, FireworkSpec } from '../aurora/assets';
+import type { FireworkSpec } from '../aurora/assets';
 import { makeBand } from '../aurora/figures';
 import { shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
-import { Builder, disposeTree } from './kit/build';
 import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
+import { dressModel, instances, loadModel } from './kit/model';
+import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { StrobeGate } from './kit/strobe';
-import { glow, surface } from './kit/surface';
+import { glow, modelSurface } from './kit/surface';
+import { loadScans } from './kit/textures';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 
-/** The hall: half its width, its back and front walls, and its height (metres). */
+/** The hall (as tools/stage/venues/warehouse.py builds it): half its width, back, front, height. */
 const HALF = 25;
 const BACK = -20;
 const FRONT = 42;
-const HEIGHT = 14;
-/** The stage riser: its front edge and height. */
 const STAGE_FRONT = -8;
-const DECK = 1.4;
-/** Pillars down both sides of the floor. */
+const GALLERY = 4.2;
+const GALLERY_Y = 5.2;
+const BAR_TOP = 13.6;
 const PILLARS: [number, number][] = [];
 for (const x of [-17, 17]) for (let z = -2; z <= 38; z += 8) PILLARS.push([x, z]);
-/** The kinetic light bars over the floor: columns across and rows back. */
-const BAR_X = [-16, -8, 0, 8, 16];
-const BAR_Z = [0, 6, 12, 18, 24, 30];
-const BAR_TOP = 13.6;
 
 /**
- * Warehouse: a disused factory hall at night. Bare concrete and old brick, a floor wet enough to
- * mirror the show, a wall of LEDs behind a DJ in the middle with the band either side, lasers that
- * cut sheets of light over the crowd, rows of light bars that sink and rise on their winches, and
- * strobes for the drops. Thick haze; red, white and cold blue.
+ * Warehouse: a disused factory hall at night, modelled in Blender (tools/stage/venues/warehouse.py).
+ * Here it gets its materials and comes alive: the wet floor mirrors the show, the LED wall, columns
+ * and booth play looks made from the music, the light bars sink and rise on their winches, the
+ * strobes fire on the drops, and lasers cut sheets and tunnels through the haze. The band plays
+ * at the front of the stage, the DJ up behind them; people fill the floor and the galleries.
  */
-export function buildWarehouse(ctx: VenueContext): Venue {
+export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const { g, menu } = ctx;
   const hi = g.lights === 'medium' || g.lights === 'high';
-  const b = new Builder();
-  const concrete = surface({ pattern: 'concrete', color: 0x5d5b58, color2: 0x2a2826, rough: 0.85, scale: 1.4 });
-  const floor = surface({ pattern: 'concrete', color: 0x3c3a38, color2: 0x1c1b1a, rough: 0.35, scale: 1.2, mirror: true, wet: 0.55 });
-  const brick = surface({ pattern: 'brick', color: 0x6e3a2a, color2: 0x2c2723, rough: 0.9, scale: 0.55 });
-  const steel = surface({ pattern: 'metal', color: 0x2a2c30, rough: 0.45, metal: 0.8, scale: 2 });
-  const black = surface({ color: 0x0c0c0e, rough: 0.6 });
-  const deck = surface({ pattern: 'wood', color: 0x15130f, color2: 0x0a0908, rough: 0.4, scale: 3 });
-  const glass = surface({ pattern: 'glass', color: 0x0a1424, rough: 0.08, emissive: 0x050a18 });
-  const lamp = glow(0xffa040, 2.4);
-  const exit = glow(0x20ff70, 1.6);
-  const red = glow(0xff1a10, 1.4);
+  const model = await loadModel('warehouse');
+  const data = model.data;
+  const gear = gearRoles();
+  const barGlow = glow(0xffffff, 1, true);
+  const strobeGlow = glow(0xffffff, 1, true);
+  const scans = await loadScans(
+    ['concrete_floor', 'concrete_wall', 'brick', 'planks', 'steel_rust', 'steel_paint', 'steel_ribbed', 'steel_tread', 'carpet'],
+    g,
+    ctx.anisotropy,
+  );
+  const emblemGlow = glow(0xffffff, 2);
+  const dressed = dressModel(model, {
+    ...gear.roles,
+    Floor: modelSurface({
+      pattern: 'concrete',
+      color: 0x3c3a38,
+      color2: 0x1c1b1a,
+      rough: 0.35,
+      scale: 1.2,
+      mirror: true,
+      wet: 0.55,
+      scan: scans.concrete_floor,
+      scanScale: 4,
+      tint: 0x9a9894,
+      scanRough: 0.55,
+    }),
+    Concrete: modelSurface({
+      pattern: 'concrete',
+      color: 0x5d5b58,
+      color2: 0x2a2826,
+      rough: 0.85,
+      scale: 1.4,
+      scan: scans.concrete_wall,
+      scanScale: 3.5,
+      tint: 0xb0aca6,
+    }),
+    Brick: modelSurface({
+      pattern: 'brick',
+      color: 0x6e3a2a,
+      color2: 0x2c2723,
+      rough: 0.9,
+      scale: 0.55,
+      scan: scans.brick,
+      scanScale: 2.4,
+      tint: 0xc8b8b0,
+    }),
+    Graffiti: modelSurface({ pattern: 'graffiti', color: 0x4a2a22, color2: 0xd23c8c, rough: 0.9, scale: 1.6 }),
+    Glass: modelSurface({ pattern: 'glass', color: 0x0a1424, rough: 0.08, emissive: 0x050a18 }),
+    Wood: modelSurface({
+      pattern: 'wood',
+      color: 0x15130f,
+      color2: 0x0a0908,
+      rough: 0.4,
+      scale: 3,
+      scan: scans.planks,
+      scanScale: 2.5,
+      tint: 0x3a3632,
+      scanRough: 0.7,
+    }),
+    Fabric: modelSurface({ pattern: 'fabric', color: 0x1a1a1e, rough: 1, scale: 0.4, scan: scans.carpet, scanScale: 1.2, tint: 0x55555c }),
+    Hazard: modelSurface({ pattern: 'hazard', color: 0xe8b400, color2: 0x111111, rough: 0.6, scale: 0.5 }),
+    Steel: modelSurface({
+      pattern: 'metal',
+      color: 0x2a2c30,
+      rough: 0.45,
+      scale: 2,
+      scan: scans.steel_rust,
+      scanScale: 1.6,
+      tint: 0x6a6c72,
+      metal: 0.5,
+    }),
+    Crane: modelSurface({
+      pattern: 'panels',
+      color: 0xb88a12,
+      color2: 0x4a3410,
+      rough: 0.6,
+      metal: 0.4,
+      scale: 1,
+      scan: scans.steel_paint,
+      scanScale: 2,
+      tint: 0xe0a818,
+    }),
+    Panels: modelSurface({
+      pattern: 'panels',
+      color: 0x3a3c40,
+      color2: 0x1a1a1a,
+      rough: 0.7,
+      metal: 0.3,
+      scale: 1,
+      scan: scans.steel_ribbed,
+      scanScale: 2,
+      tint: 0x8a8e94,
+    }),
+    'Glow.Sodium': glow(0xffa040, 2.4),
+    'Glow.Exit': glow(0x20ff70, 1.6),
+    'Glow.Emblem': emblemGlow,
+  });
+  const root = dressed.root;
+  const owned: { dispose(): void }[] = [dressed, barGlow, strobeGlow];
 
-  // The hall: floor, walls, roof.
-  b.panel(floor, HALF * 2, FRONT - BACK, [0, 0, (FRONT + BACK) / 2], 0, -Math.PI / 2);
-  b.panel(concrete, HALF * 2, HEIGHT, [0, HEIGHT / 2, BACK], 0);
-  b.panel(concrete, HALF * 2, HEIGHT, [0, HEIGHT / 2, FRONT], Math.PI);
-  for (const side of [-1, 1]) {
-    b.panel(brick, FRONT - BACK, HEIGHT, [side * HALF, HEIGHT / 2, (FRONT + BACK) / 2], -side * (Math.PI / 2));
-    // Tall factory windows, night outside, with their iron frames.
-    for (let z = -12; z <= 36; z += 8) {
-      b.panel(glass, 4.2, 5.5, [side * (HALF - 0.05), 8.6, z], -side * (Math.PI / 2));
-      for (let k = -1; k <= 1; k++) b.box(steel, [0.12, 5.6, 0.1], [side * (HALF - 0.1), 8.6, z + k * 1.4]);
-      for (const y of [6.8, 8.6, 10.4]) b.box(steel, [0.12, 0.1, 4.3], [side * (HALF - 0.1), y, z]);
-    }
-    // Sodium lamps between the windows, and an exit sign by the door at the back.
-    for (const z of [6, 22]) {
-      b.box(steel, [0.5, 0.3, 0.8], [side * (HALF - 0.3), 9.3, z]);
-      b.box(lamp, [0.3, 0.1, 0.6], [side * (HALF - 0.4), 9.12, z]);
-    }
-    b.box(exit, [0.08, 0.35, 0.9], [side * (HALF - 0.06), 3.2, 38]);
-  }
-  b.panel(black, HALF * 2, FRONT - BACK, [0, HEIGHT, (FRONT + BACK) / 2], 0, Math.PI / 2);
-  // Roof trusses across the hall and ducts along it.
-  for (let z = -16; z <= 40; z += 7) {
-    b.truss(steel, [-HALF, HEIGHT - 0.6, z], [HALF, HEIGHT - 0.6, z], 0.9);
-  }
-  for (const x of [-10, 10]) b.rod(steel, [x, HEIGHT - 1.8, BACK], [x, HEIGHT - 1.8, FRONT], 0.45, 12);
-  // Concrete pillars, with a red warning light on each.
-  for (const [x, z] of PILLARS) {
-    b.box(concrete, [0.9, HEIGHT, 0.9], [x, HEIGHT / 2, z]);
-    b.box(red, [0.12, 0.12, 0.05], [x, 3.1, z + 0.47]);
-  }
-
-  // The stage: a black riser, a wall of LEDs on scaffolding behind it, the DJ's booth in the middle.
-  b.box(black, [26, DECK, STAGE_FRONT - BACK], [0, DECK / 2, (STAGE_FRONT + BACK) / 2]);
-  b.panel(deck, 26, STAGE_FRONT - BACK - 0.2, [0, DECK + 0.005, (STAGE_FRONT + BACK) / 2], 0, -Math.PI / 2);
-  for (let x = -13.5; x <= 13.5; x += 3) b.rod(steel, [x, 0, BACK + 2.2], [x, 12, BACK + 2.2], 0.06, 6);
-  for (const y of [1.6, 11.6]) b.truss(steel, [-13.6, y, BACK + 2.1], [13.6, y, BACK + 2.1], 0.35);
-  // Crowd barrier.
-  b.box(steel, [30, 1.15, 0.12], [0, 0.6, STAGE_FRONT + 2.4]);
-  for (let x = -14; x <= 14; x += 2) b.box(steel, [0.08, 1.15, 0.9], [x, 0.58, STAGE_FRONT + 2.8]);
-  // The booth: a black desk with decks and a mixer, its front an LED strip.
-  b.box(black, [4.4, 1.05, 1.2], [0, DECK + 0.52, -11]);
-  for (const x of [-1.3, 0, 1.3]) b.box(steel, [x === 0 ? 0.9 : 0.75, 0.12, 0.8], [x, DECK + 1.11, -11.05]);
-  // Drum riser.
-  b.box(black, [4, 0.5, 3.2], [9, DECK + 0.25, -13.5]);
-  // Rig: the main truss over the stage's front, the back truss over the screen.
-  b.truss(steel, [-14, 11, STAGE_FRONT - 0.5], [14, 11, STAGE_FRONT - 0.5], 0.55);
-  b.truss(steel, [-14, 12.2, BACK + 3.2], [14, 12.2, BACK + 3.2], 0.55);
-  for (const x of [-14, 14]) b.truss(steel, [x, 0, STAGE_FRONT - 0.5], [x, 11, STAGE_FRONT - 0.5], 0.55);
-  // The truss the light bars hang from.
-  for (const z of BAR_Z) b.truss(steel, [-20, BAR_TOP, z], [20, BAR_TOP, z], 0.35);
-  // Line arrays on chains either side of the stage.
-  for (const side of [-1, 1])
-    for (let k = 0; k < 6; k++) b.box(black, [1.2, 0.42, 0.7], [side * 16.5, 9.6 - k * 0.45, STAGE_FRONT + 0.6 + k * 0.05]);
-  const root = b.build('warehouse');
-  const owned: { dispose(): void }[] = [{ dispose: () => disposeTree(root) }];
-
-  // The LED wall and the strip on the booth.
+  // Screens: the wall, the columns either side, the booth's front and the riser's lip.
   const wall = new LedScreen([208, 76], ['tunnel', 'bars', 'stripes', 'grid', 'rings', 'kaleido'], 2.1, 1);
-  const wallMesh = new THREE.Mesh(new THREE.PlaneGeometry(26, 9.5), wall.material);
-  wallMesh.position.set(0, 6.75, BACK + 2.4);
-  const strip = new LedScreen([48, 10], ['bars', 'stripes', 'grid'], 2.4, 2);
-  const stripMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.3, 0.9), strip.material);
-  stripMesh.position.set(0, DECK + 0.52, -10.39);
-  // Strips of LED along the riser's front.
+  const column = new LedScreen([24, 84], ['stripes', 'bars', 'plasma', 'grid'], 1.9, 4);
+  const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 2.2, 2);
   const lip = new LedScreen([260, 4], ['stripes', 'bars', 'rings'], 1.5, 3);
-  const lipMesh = new THREE.Mesh(new THREE.PlaneGeometry(26, 0.3), lip.material);
-  lipMesh.position.set(0, DECK - 0.2, STAGE_FRONT + 0.01);
-  root.add(wallMesh, stripMesh, lipMesh);
-  owned.push(wall, strip, lip, wallMesh.geometry, stripMesh.geometry, lipMesh.geometry);
+  const cube = new LedScreen([40, 40], ['glyph', 'grid', 'glyph', 'stripes'], 2, 5);
+  const screens = { wall, column, booth, lip, cube };
+  for (const [key, scr] of Object.entries(screens)) for (const mesh of dressed.screens.get(key) ?? []) mesh.material = scr.material;
+  owned.push(wall, column, booth, lip, cube);
 
-  // The light bars and their cables.
-  const barCount = BAR_X.length * BAR_Z.length;
-  const barMat = glow(0xffffff, 1, true);
-  const bars = new THREE.InstancedMesh(new THREE.BoxGeometry(5.2, 0.1, 0.1), barMat, barCount);
-  const cableMat = surface({ color: 0x050505, rough: 1 });
-  const cables = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.012, 0.012, 1, 3, 1, true), cableMat, barCount * 2);
-  for (let i = 0; i < barCount; i++) bars.setColorAt(i, new THREE.Color(0, 0, 0));
-  bars.frustumCulled = cables.frustumCulled = false;
-  root.add(bars, cables);
-  owned.push(bars.geometry, barMat, cables.geometry, cableMat);
-  const barHeight = new Float32Array(barCount).fill(10);
-
-  // Strobes along the main truss.
-  const strobeCount = 14;
-  const strobeMat = glow(0xffffff, 1, true);
-  const strobes = new THREE.InstancedMesh(new THREE.BoxGeometry(0.9, 0.35, 0.12), strobeMat, strobeCount);
-  const m = new THREE.Matrix4();
-  for (let i = 0; i < strobeCount; i++) {
-    m.makeTranslation(-13 + (26 * i) / (strobeCount - 1), 10.55, STAGE_FRONT - 0.15);
-    strobes.setMatrixAt(i, m);
-    strobes.setColorAt(i, new THREE.Color(0, 0, 0));
-  }
-  root.add(strobes);
-  owned.push(strobes.geometry, strobeMat);
-  const strobeLevel = new Float32Array(strobeCount);
+  // The light bars in their cases on cables, and the strobes' faces: repeated from the model.
+  const barSpots = data.instances.bar ?? [];
+  const bars = instances(dressed.protos.get('bar')!, barSpots, barGlow);
+  const cases = instances(dressed.protos.get('barcase')!, barSpots, gear.roles.Dark);
+  const cables = instances(dressed.protos.get('cable')!, [...barSpots, ...barSpots], gear.roles.Black);
+  const strobes = instances(dressed.protos.get('strobe')!, data.instances.strobe ?? [], strobeGlow);
+  root.add(bars, cases, cables, strobes);
+  const barHeight = new Float32Array(barSpots.length).fill(10);
+  const strobeLevel = new Float32Array(strobes.count);
 
   const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 90 : 220);
   root.add(lasers.mesh);
   owned.push(lasers);
+  const src = (name: string) => (data.sources[name] ?? []).map((p) => new THREE.Vector3(...p));
+  const sources = {
+    deck: src('laser.deck'),
+    truss: src('laser.truss'),
+    wall: src('laser.wall')[0] ?? new THREE.Vector3(0, 6.2, BACK + 2.6),
+  };
 
-  // Moving heads: a row on the main truss into the crowd, a row on the back truss over it, a row
-  // on the deck's front pointing up, and the moon through the windows.
-  const fixtures: Fixture[] = [];
-  for (let i = 0; i < 12; i++) {
-    const x = -12.5 + (25 * i) / 11;
-    fixtures.push({ group: 'Front', pos: [x, 10.6, STAGE_FRONT - 0.5], dir: [x * 0.02, -0.55, 0.83], length: 30, spread: 0.05 });
-  }
-  for (let i = 0; i < 10; i++) {
-    const x = -12 + (24 * i) / 9;
-    fixtures.push({ group: 'Back', pos: [x, 11.8, BACK + 3.2], dir: [x * 0.025, 0.05, 1], length: 52, spread: 0.022 });
-  }
-  for (let i = 0; i < 8; i++) {
-    const x = -10.5 + 3 * i;
-    fixtures.push({ group: 'Floor', pos: [x, DECK + 0.15, STAGE_FRONT - 0.4], dir: [x * 0.03, 1, 0.25], length: 13, spread: 0.06 });
-  }
-  for (const side of [-1, 1])
-    for (const z of [-4, 12, 28])
-      fixtures.push({ group: 'Moon', pos: [side * (HALF - 0.4), 9.5, z], dir: [-side * 0.75, -0.62, 0.15], length: 26, spread: 0.09 });
-
-  // Cold sparks along the deck's front (the indoor kind), confetti from the wings.
-  const fireworks: FireworkSpec[] = [-11, -6.5, -2.2, 2.2, 6.5, 11].map((x) => ({
-    origin: [x, DECK, STAGE_FRONT - 0.3],
+  const fireworks: FireworkSpec[] = (data.sources.sparks ?? []).map((origin) => ({
+    origin,
     n: 7,
     spread: 5,
     length: [3.5, 5.5],
     lean: 0,
-    side: Math.abs(x) > 5,
+    side: Math.abs(origin[0]) > 5,
   }));
 
-  const band: Record<string, Vec3> = {
-    lead: [-9, DECK, -12],
-    vox: [-5.4, DECK, -9.6],
-    bass: [5.4, DECK, -9.6],
-    drums: [9, DECK + 0.5, -14],
-  };
+  const marks = data.marks;
+  const band: Record<string, Vec3> = { vox: marks.vox, lead: marks.lead, bass: marks.bass, drums: marks.drums };
   const players = makeBand({ band }, ctx.cast.band.data.band ?? {}, ctx.focus);
-  for (const p of players) p.yaw = Math.atan2(-p.pos[0] * 0.25, 10);
+  for (const p of players) p.yaw = Math.atan2(-p.pos[0] * 0.18, 10);
+  const djAt = marks.dj;
 
   const shots = [
-    shot('front', [0, 3.2, 30], [0, 5.5, -14], 70, 'push', 6, 'all', 3),
+    shot('front', [0, 3.4, 31], [0, 5.5, -14], 70, 'push', 6, 'all', 3),
     shot('hero', [9, 10.5, 39], [-2, 4, -10], 60, 'orbit', 0.12, 'all', 2),
     shot('crowd', [6, 2.4, 12], [0, 4.8, -14], 78, 'truck', 3, 'busy', 2),
-    shot('close', [2.4, 3.7, -3.6], [0, 2.9, -12], 55, 'pull', 2, 'busy', 1.6),
+    shot('close', [2.4, 3.6, -3.4], [0, 2.6, -10], 58, 'pull', 2, 'busy', 1.6),
+    shot('dj', [1.6, 4.2, djAt[2] + 4], [0, djAt[1] + 1.1, djAt[2]], 56, 'truck', 1.2, 'busy', 1.4),
+    shot('gallery', [-HALF + 2.2, GALLERY_Y + 1.7, 30], [2, 3, -8], 70, 'truck', 4, 'all', 1.1),
     shot('aerial', [0, 12.6, 36], [0, 2, -6], 74, 'push', 5, 'all', 1),
-    shot('wide-left', [-21, 5, 20], [2, 5, -12], 66, 'truck', 5, 'all', 1.2),
-    shot('wide-right', [21, 5, 20], [-2, 5, -12], 66, 'truck', 5, 'all', 1.2),
+    shot('wide-left', [-19, 5, 20], [2, 5, -12], 66, 'truck', 5, 'all', 1.2),
+    shot('wide-right', [19, 5, 20], [-2, 5, -12], 66, 'truck', 5, 'all', 1.2),
     shot('low-gate', [0, 1.2, -5.4], [0, 7.5, -16], 90, 'crane', 1.2, 'peak', 1.2),
-    shot('rig', [-11, 11.8, 4], [5, 1.5, 22], 70, 'truck', 6, 'peak', 1),
+    shot('rig', [-11, 12.4, 4], [5, 1.5, 22], 70, 'truck', 6, 'peak', 1),
     shot('band', [0, 4.2, 4], [0, 2.6, -11], 64, 'truck', 3, 'busy', 1.2),
     ...bandShots(band, ctx.part, (p) => [p[0] * 0.5, p[1], p[2] + 10], 5.5),
   ];
   const low: Vec3[] = shots.filter((s) => s.pos[1] < 5).map((s) => s.pos);
 
   const share = LEVEL_SHARE[g.crowd];
+  const sync = ctx.cast.crowd.data.sync;
   const audience = fillCrowd(
     {
-      bounds: [-23.5, STAGE_FRONT + 3.4, 23.5, FRONT - 1.5],
+      bounds: [-HALF + GALLERY + 0.6, STAGE_FRONT + 3.4, HALF - GALLERY - 0.6, FRONT - 1.5],
       step: 0.72,
       density: (x, z) => {
         if (PILLARS.some(([px, pz]) => Math.hypot(x - px, z - pz) < 1.1)) return 0;
+        if (Math.abs(x) < 3 && Math.abs(z - 24) < 2.2) return 0;
         const back = (z - STAGE_FRONT) / (FRONT - STAGE_FRONT);
         return Math.max(0.35, 1.05 - back * 0.65 - Math.max(0, Math.abs(x) - 15) * 0.05);
       },
@@ -218,40 +215,59 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     ctx.characters,
     share,
     low,
-    ctx.cast.crowd.data.sync,
+    sync,
     17,
   );
-  audience.push(dj(ctx.characters, [0, DECK, -12], 0));
+  audience.push(dj(ctx.characters, djAt, 0));
+  // People on the galleries, most along the rail to watch.
+  for (const side of [-1, 1])
+    audience.push(
+      ...fillCrowd(
+        {
+          bounds:
+            side < 0 ? [-HALF + 0.5, -1.5, -HALF + GALLERY - 0.35, FRONT - 4.5] : [HALF - GALLERY + 0.35, -1.5, HALF - 0.5, FRONT - 4.5],
+          step: 0.8,
+          density: (x) => (Math.abs(Math.abs(x) - (HALF - GALLERY + 0.6)) < 1.2 ? 0.85 : 0.25),
+          face: (_, z) => [0, Math.min(z, -6)],
+          ground: () => GALLERY_Y,
+          wander: 0.4,
+        },
+        ctx.characters,
+        share,
+        low,
+        sync,
+        side + 40,
+      ),
+    );
 
   // Light the show puts on the room: sodium lamps, the wall's spill, the light bars, the strobes.
   const L = shared.uLight.value;
   const LC = shared.uLightCol.value;
   const amber = new THREE.Color(1, 0.55, 0.18);
   const color = new THREE.Color();
-  let lastSub = -1;
   const gate = new StrobeGate();
+  let lastSub = -1;
   let flash = 0;
   let laserLook = 0;
   const tmpA = new THREE.Vector3();
   const tmpB = new THREE.Vector3();
-  const sources = {
-    deck: [-10, -6, -2, 2, 6, 10].map((x) => new THREE.Vector3(x, DECK + 0.25, STAGE_FRONT - 0.2)),
-    truss: [-12, -5, 5, 12].map((x) => new THREE.Vector3(x, 10.7, STAGE_FRONT - 0.3)),
-    wall: new THREE.Vector3(0, 6.2, BACK + 2.6),
-  };
+  const dummy = new THREE.Object3D();
+  const c1 = new THREE.Color();
+  const c2 = new THREE.Color();
+  const green = new THREE.Color(0.15, 1, 0.3);
 
   const bind = () => {
     shared.uGlowPos.value.set(0, 6.2, BACK + 3);
     shared.uHazeFar.value.setRGB(0.008, 0.008, 0.011);
     shared.uHazeDensity.value = hi ? 0.02 : 0.016;
-    shared.uAmbient.value.setRGB(0.014, 0.014, 0.02);
+    shared.uAmbient.value.setRGB(0.016, 0.016, 0.022);
     shared.uGlowLight.value.set(1.8, 16);
     shared.uGlowFall.value = 0.006;
     shared.uBall.value.w = 0;
-    L[0].set(-HALF + 0.8, 9, 6, 9);
-    L[1].set(-HALF + 0.8, 9, 22, 9);
-    L[2].set(HALF - 0.8, 9, 6, 9);
-    L[3].set(HALF - 0.8, 9, 22, 9);
+    L[0].set(-HALF + 0.8, 9, -8, 9);
+    L[1].set(-HALF + 0.8, 9, 24, 9);
+    L[2].set(HALF - 0.8, 9, -8, 9);
+    L[3].set(HALF - 0.8, 9, 24, 9);
     for (let i = 0; i < 4; i++) LC[i].copy(amber).multiplyScalar(0.55);
   };
 
@@ -259,70 +275,73 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     const s = f.show;
     const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
     const peak = s.level === 'peak' || s.overdrive > 0.5;
-    // The wall changes its picture every eight bars, and at once when the level changes.
-    if (f.beat === 'downbeat' && s.bar % 8 === 0) wall.next(s.bar / 8);
-    if (f.beat === 'downbeat' && s.bar % 4 === 0) strip.next(s.bar / 4);
-    if (f.beat === 'downbeat' && s.bar % 4 === 2) lip.next(s.bar / 4);
+    if (f.beat === 'downbeat') {
+      if (s.bar % 8 === 0) wall.next(s.bar / 8);
+      if (s.bar % 4 === 0) booth.next(s.bar / 4);
+      if (s.bar % 4 === 1) column.next(s.bar / 4);
+      if (s.bar % 4 === 2) lip.next(s.bar / 4);
+      if (s.bar % 8 === 4) cube.next(s.bar / 8);
+    }
     wall.level = 1.7 + 0.9 * f.barPulse + 0.6 * s.overdrive;
-    for (const scr of [wall, strip, lip]) scr.update(f.dt);
+    for (const scr of Object.values(screens)) scr.update(f.dt);
+    // The emblem before the wall breathes with the bass and burns white on the bar.
+    emblemGlow.uniforms.uColor.value.copy(f.key).lerp(WHITE, 0.35 + 0.5 * f.barPulse);
+    emblemGlow.uniforms.uLevel.value = 1.2 + 2.2 * f.low + 1.5 * f.barPulse + 2 * s.overdrive;
+    gear.jog.uniforms.uLevel.value = 1.4 + 2 * f.pulse;
+    gear.jog.uniforms.uColor.value.copy(f.accent);
+    gear.meter.uniforms.uLevel.value = 1 + 2.5 * f.low;
 
     // Light bars: a slow swell through the rows, deeper and faster as the music builds; in a peak
     // they ride the beat in a wave down the hall; overdrive pulls them all down low.
-    const dummy = new THREE.Object3D();
-    let i = 0;
-    for (const z of BAR_Z)
-      for (const x of BAR_X) {
-        const wave = Math.sin(f.time * (0.35 + 0.35 * busy) + z * 0.18 + x * 0.06);
-        const beatWave = peak ? Math.sin(f.clock * Math.PI * 0.5 - z * 0.12) * 0.8 : 0;
-        const want = 10.2 - busy * 2.6 + wave * (1.1 + 1.6 * busy) + beatWave - s.overdrive * 3;
-        barHeight[i] += (want - barHeight[i]) * Math.min(1, f.dt * 2.5);
-        const y = barHeight[i];
-        dummy.position.set(x, y, z);
-        dummy.rotation.set(0, 0, peak ? Math.sin(f.clock * 0.5 + i) * 0.12 : 0);
+    const rows = [...new Set(barSpots.map((p) => p[2]))].sort((a, b) => a - b);
+    barSpots.forEach(([x, , z], i) => {
+      const wave = Math.sin(f.time * (0.35 + 0.35 * busy) + z * 0.18 + x * 0.06);
+      const beatWave = peak ? Math.sin(f.clock * Math.PI * 0.5 - z * 0.12) * 0.8 : 0;
+      const want = 10.2 - busy * 2.6 + wave * (1.1 + 1.6 * busy) + beatWave - s.overdrive * 3;
+      barHeight[i] += (want - barHeight[i]) * Math.min(1, f.dt * 2.5);
+      const y = barHeight[i];
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, 0, peak ? Math.sin(f.clock * 0.5 + i) * 0.12 : 0);
+      dummy.scale.set(1, 1, 1);
+      dummy.updateMatrix();
+      bars.setMatrixAt(i, dummy.matrix);
+      cases.setMatrixAt(i, dummy.matrix);
+      for (const k of [0, 1]) {
+        dummy.position.set(x + (k ? 2.4 : -2.4), y, z);
+        dummy.rotation.set(0, 0, 0);
+        dummy.scale.set(1, BAR_TOP - 0.3 - y, 1);
         dummy.updateMatrix();
-        bars.setMatrixAt(i, dummy.matrix);
-        for (const k of [0, 1]) {
-          const cx = x + (k ? 2.4 : -2.4);
-          dummy.position.set(cx, (BAR_TOP + y) / 2, z);
-          dummy.rotation.set(0, 0, 0);
-          dummy.scale.set(1, BAR_TOP - y, 1);
-          dummy.updateMatrix();
-          cables.setMatrixAt(i * 2 + k, dummy.matrix);
-          dummy.scale.set(1, 1, 1);
-        }
-        // A chase runs back through the rows on the beat; the colours trade places every bar.
-        const row = BAR_Z.indexOf(z);
-        const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - row * 0.18) * Math.PI)), 6);
-        const lvl = (0.12 + 0.88 * busy) * (0.3 + 0.7 * chase) * 2 + s.overdrive;
-        color.copy((row + s.bar) % 2 ? f.key : f.accent).multiplyScalar(lvl);
-        bars.setColorAt(i, color);
-        i++;
+        cables.setMatrixAt(i * 2 + k, dummy.matrix);
       }
-    bars.instanceMatrix.needsUpdate = true;
+      // A chase runs back through the rows on the beat; the colours trade places every bar.
+      const row = rows.indexOf(z);
+      const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - row * 0.18) * Math.PI)), 6);
+      const lvl = (0.12 + 0.88 * busy) * (0.3 + 0.7 * chase) * 2 + s.overdrive;
+      bars.setColorAt(i, color.copy((row + s.bar) % 2 ? f.key : f.accent).multiplyScalar(lvl));
+    });
+    for (const mesh of [bars, cases, cables]) mesh.instanceMatrix.needsUpdate = true;
     bars.instanceColor!.needsUpdate = true;
-    cables.instanceMatrix.needsUpdate = true;
 
-    // Strobes: in a peak a few of them go off on the off-beats and all of them on the bar, never
-    // more often than the gate allows.
+    // Strobes: in a peak a few go off on the off-beats and all of them on the bar, never more
+    // often than the gate allows.
     const sub = Math.floor(f.clock * 2);
     if (sub !== lastSub) {
       lastSub = sub;
       const all = f.beat === 'downbeat' || sub % 4 === 0;
       if (peak && !menu && busy > 0.4 && gate.fire(f.time))
-        for (let k = 0; k < strobeCount; k++)
+        for (let k = 0; k < strobeLevel.length; k++)
           if (all || Math.random() < 0.3 + 0.2 * s.overdrive) strobeLevel[k] = all ? (k % 2 ? 1 : 0.5) : 1;
     }
     let sum = 0;
-    for (let k = 0; k < strobeCount; k++) {
+    for (let k = 0; k < strobeLevel.length; k++) {
       strobeLevel[k] *= Math.exp(-f.dt * 38);
       strobes.setColorAt(k, color.setScalar(0.08 + strobeLevel[k] * 9));
       sum += strobeLevel[k];
     }
     strobes.instanceColor!.needsUpdate = true;
-    flash = Math.max(flash * Math.exp(-f.dt * 25), sum / strobeCount);
+    flash = Math.max(flash * Math.exp(-f.dt * 25), sum / Math.max(1, strobeLevel.length));
     shared.uFlash.value = flash * 0.35;
 
-    // The room's lights: the wall's spill, two pools under the light bars, the strobes' flash.
     L[4].set(0, 6, BACK + 5, 16);
     LC[4]
       .copy(f.key)
@@ -335,29 +354,37 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     L[7].set(0, 10.4, STAGE_FRONT, 14);
     LC[7].setScalar(flash * 3);
 
-    // Lasers: a sheet over the heads when it is calm, fans and scans as it builds, the tunnel and
-    // everything at a peak. Each look holds for four bars.
+    // Lasers: a sheet over the heads, fans and scans as it builds, the tunnel at a peak.
     lasers.begin();
     if (f.beat === 'downbeat' && s.bar % 4 === 0) laserLook++;
     const t = f.time;
     const lv = (menu ? 0.5 : 1) * (0.35 + 0.65 * busy) * 0.45;
-    const green = color.setRGB(0.15, 1, 0.3);
-    const c1 = new THREE.Color().copy(f.key).lerp(WHITE, 0.15);
-    const c2 = new THREE.Color().copy(f.accent);
-    // The sheet: two lasers at the deck's corners fan out flat just over the crowd.
-    if (s.level !== 'calm' || menu) {
+    c1.copy(f.key).lerp(WHITE, 0.15);
+    c2.copy(f.accent);
+    const deck = sources.deck;
+    if ((s.level !== 'calm' || menu) && deck.length > 1) {
       const roll = Math.sin(t * 0.7) * 0.05;
-      fan(lasers, sources.deck[0], 22, 0.62, 0.09 + 0.03 * Math.sin(t * 0.5), 1.3, 46, laserLook % 2 ? green : c1, lv * 1.4, roll);
-      fan(lasers, sources.deck[5], 22, -0.62, 0.09 + 0.03 * Math.sin(t * 0.5 + 1), 1.3, 46, laserLook % 2 ? green : c1, lv * 1.4, -roll);
+      fan(lasers, deck[0], 22, 0.62, 0.09 + 0.03 * Math.sin(t * 0.5), 1.3, 46, laserLook % 2 ? green : c1, lv * 1.4, roll);
+      fan(
+        lasers,
+        deck[deck.length - 1],
+        22,
+        -0.62,
+        0.09 + 0.03 * Math.sin(t * 0.5 + 1),
+        1.3,
+        46,
+        laserLook % 2 ? green : c1,
+        lv * 1.4,
+        -roll,
+      );
     }
     if (s.level === 'groove') {
       const look = laserLook % 3;
       if (look === 0)
-        // Fans from the truss, sweeping across each other.
-        sources.truss.forEach((src, k) =>
+        sources.truss.forEach((p, k) =>
           fan(
             lasers,
-            src,
+            p,
             9,
             Math.sin(t * 0.8 + k) * 0.5,
             -0.42 + 0.1 * Math.sin(t + k),
@@ -369,18 +396,16 @@ export function buildWarehouse(ctx: VenueContext): Venue {
           ),
         );
       else if (look === 1)
-        // Single beams scanning the floor, jumping on every beat.
-        sources.deck.forEach((src, k) => {
+        deck.forEach((p, k) => {
           const jump = hash(Math.floor(f.clock) * 7 + k);
-          fan(lasers, src, 3, (jump - 0.5) * 1.2, 0.05 + 0.25 * hash(jump * 13), 0.18, 45, k % 2 ? c2 : c1, lv * 1.6);
+          fan(lasers, p, 3, (jump - 0.5) * 1.2, 0.05 + 0.25 * hash(jump * 13), 0.18, 45, k % 2 ? c2 : c1, lv * 1.6);
         });
       else
-        sources.truss.forEach((src, k) =>
-          fan(lasers, src, 14, (k - 1.5) * 0.25, -0.2 + 0.12 * Math.sin(t * 1.3 + k), 1.0, 42, c2, lv * 1.2, Math.sin(t * 0.4) * 0.4),
+        sources.truss.forEach((p, k) =>
+          fan(lasers, p, 14, (k - 1.5) * 0.25, -0.2 + 0.12 * Math.sin(t * 1.3 + k), 1.0, 42, c2, lv * 1.2, Math.sin(t * 0.4) * 0.4),
         );
     }
     if (peak) {
-      // The tunnel: a cone of beams from the middle of the wall, turning.
       const n = 20;
       for (let k = 0; k < n; k++) {
         const a = (k / n) * Math.PI * 2 + t * 0.9;
@@ -392,16 +417,15 @@ export function buildWarehouse(ctx: VenueContext): Venue {
           .add(sources.wall);
         lasers.add(sources.wall, tmpA, k % 2 ? c1 : c2, lv * 1.5);
       }
-      // On every other bar the truss's lasers stab down into the crowd, one beam each, on the beat.
       if (s.bar % 2)
-        sources.truss.forEach((src, k) => {
+        sources.truss.forEach((p, k) => {
           const jump = hash(Math.floor(f.clock) * 5 + k);
           tmpB
             .set((jump - 0.5) * 1.4, -0.45, 1)
             .normalize()
             .multiplyScalar(40)
-            .add(src);
-          lasers.add(src, tmpB, c2, lv * 2 * (0.4 + 0.6 * f.pulse));
+            .add(p);
+          lasers.add(p, tmpB, c2, lv * 2 * (0.4 + 0.6 * f.pulse));
         });
     }
     lasers.end(f.height);
@@ -420,6 +444,23 @@ export function buildWarehouse(ctx: VenueContext): Venue {
           level: s.beamLevel * (s.beamMode === 'chase' ? ((f.beats + i) % 4 === 0 ? 1 : 0.15) : 0.4 + 0.5 * f.pulse),
           color: i % 2 ? 'accent' : 'key',
         };
+      case 'Rig':
+        return {
+          pan: Math.sin(t * 0.4 + i * 0.9) * (0.15 + 0.3 * s.beamLevel),
+          tilt: Math.cos(t * 0.33 + i * 1.3) * (0.1 + 0.25 * s.beamLevel),
+          level: s.level === 'calm' ? 0.18 : s.beamLevel * (s.beamMode === 'chase' ? ((f.beats + i) % 3 === 0 ? 1 : 0.2) : 0.7),
+          color: i % 3 ? 'key' : 'accent',
+        };
+      case 'Spine': {
+        // The spine's heads fan out across the hall in pairs; in a peak they cross on the beat.
+        const side = i % 2 ? 1 : -1;
+        return {
+          pan: side * (0.2 + 0.5 * s.beamLevel * (0.5 + 0.5 * Math.sin(t * 0.5 + i * 0.4))),
+          tilt: Math.sin(t * 0.35 + i * 0.6) * 0.25,
+          level: s.level === 'calm' ? 0.3 : s.beamLevel * (s.beamMode === 'chase' ? ((f.beats + (i >> 1)) % 4 === 0 ? 1 : 0.25) : 0.8),
+          color: 'white',
+        };
+      }
       case 'Back':
         return {
           pan: Math.sin(t * 0.25 + i * 0.7) * 0.25,
@@ -437,10 +478,10 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     band,
     audience,
     players,
-    fixtures,
+    fixtures: data.fixtures,
     fireworks,
-    co2: [-12, -7, 7, 12].map((x): Vec3 => [x, DECK, STAGE_FRONT - 0.6]),
-    confetti: [-1, 1].map((side) => ({ pos: [side * 13, 9, STAGE_FRONT] as Vec3, dir: [-side * 0.25, 0.75, 0.6] as Vec3 })),
+    co2: data.sources.co2 ?? [],
+    confetti: (data.sources.confetti ?? []).map((pos) => ({ pos, dir: [-Math.sign(pos[0]) * 0.25, 0.75, 0.6] as Vec3 })),
     looks: [
       { key: [1, 0.08, 0.05], accent: [1, 0.92, 0.88], wash: [0.6, 0.02, 0.04] },
       { key: [0.9, 0.95, 1], accent: [0.2, 0.55, 1], wash: [0.1, 0.2, 0.7] },
@@ -453,6 +494,8 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     background: [0.004, 0.004, 0.006],
     sparkGravity: -7,
     mirror: { level: 0 },
+    pools: 1.7,
+    grade: { contrast: 1.14, saturation: 1.08, vignette: 0.38, tint: [0.92, 0.94, 1.05] },
     bind,
     update,
     beam,

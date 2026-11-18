@@ -4,9 +4,10 @@
  */
 export const VENUES = [
   { id: 'moonrise', name: 'Moonrise', blurb: 'Open-air festival by the lake under a night sky' },
-  { id: 'mainstage', name: 'Mainstage', blurb: 'A giant festival stage, from sunset into the night' },
+  { id: 'mainstage', name: 'Mainstage', blurb: 'A palace of domes and towers, from sunset into the night' },
+  { id: 'monolith', name: 'Monolith', blurb: 'Four concrete gates and one bar of light on a lake shore' },
   { id: 'warehouse', name: 'Warehouse', blurb: 'Concrete, lasers and strobes in an old factory hall' },
-  { id: 'arena', name: 'Arena 360', blurb: 'In the round, a sea of lights on every side' },
+  { id: 'arena', name: 'Arena 360', blurb: 'In the round under a steel dome, halos of light overhead' },
   { id: 'basement', name: 'Basement', blurb: 'A DJ in the middle of the crowd, filmed by hand' },
   { id: 'bar', name: 'Bar', blurb: 'A small stage in a bar, close enough to touch' },
 ] as const;

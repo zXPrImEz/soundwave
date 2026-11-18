@@ -58,5 +58,30 @@ export async function runStagePreview(root: HTMLElement) {
   };
   loop();
   addEventListener('resize', fit);
+  // From the console: jump to a shot, or run the show ahead by simulated seconds (a page in the
+  // background gets few frames, so time is moved on by hand; performance.now is pinned for it).
+  let fake = performance.now();
+  let simBeat = 0;
+  Object.assign(window, {
+    __shot(name: string) {
+      const d = stage.director as unknown as { shots: { name: string }[]; current: unknown; shotTime: number; update: () => boolean };
+      d.current = d.shots.find((s) => s.name === name) ?? d.current;
+      d.shotTime = 0;
+      d.update = () => false;
+    },
+    __sim(seconds: number, intensity = 0.9, overdrive = false) {
+      performance.now = () => fake;
+      for (let i = 0; i < seconds * 30; i++) {
+        fake += 1000 / 30;
+        const t = fake / 1000;
+        const b = Math.floor(t / spb);
+        const ev = b !== simBeat ? (b % 4 === 0 ? 'downbeat' : 'beat') : 'none';
+        simBeat = b;
+        stage.setBands({ low: 0.3 + 0.5 * intensity * (ev !== 'none' ? 1 : 0.5), mid: 0.4 * intensity, high: 0.3 * intensity });
+        stage.render({ beat: ev, intensity, overdrive, barSeconds: spb * 4 });
+      }
+      return stage.debugInfo();
+    },
+  });
   document.title = 'stage ready';
 }

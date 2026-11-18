@@ -23,6 +23,8 @@ export const LED_LOOKS = {
   stripes: 6,
   /** Rings rippling out on every beat. */
   rings: 7,
+  /** A sign: five bars of a sound wave, breathing with the music. */
+  glyph: 8,
 } as const;
 export type LedLook = keyof typeof LED_LOOKS;
 
@@ -98,6 +100,14 @@ vec3 look(float which, vec2 uv) {
   if (which < 6.5) {
     float s = step(0.5, fract(uv.x * 6.0 + uBeat * (mod(floor(uBeat / 4.0), 2.0) < 0.5 ? 1.0 : -1.0)));
     return mix(uKey, vec3(1.0), 0.4) * s * (0.4 + 1.2 * uPulse);
+  }
+  if (which > 7.5) {
+    vec2 g = (uv - 0.5) * vec2(1.0, 1.0);
+    float col = floor(g.x * 9.0 + 2.5);
+    float inside = step(0.0, col) * step(col, 4.0) * step(0.22, fract(g.x * 9.0 + 2.5)) * step(fract(g.x * 9.0 + 2.5), 0.78);
+    float h = (0.14 + 0.2 * hash11(col + 3.0 + uSeed)) * (0.75 + 0.5 * (mod(col, 2.0) < 0.5 ? uLow : uMid)) + 0.05 * uPulse;
+    float bar = inside * smoothstep(h, h - 0.02, abs(g.y));
+    return mix(uAccent, vec3(1.0), 0.6) * bar * (0.9 + 0.5 * uPulse);
   }
   float r = length(c);
   float w = fract(r * 4.0 - uBeat);

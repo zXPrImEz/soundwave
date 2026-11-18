@@ -15,6 +15,7 @@ import { shared } from '../aurora/shared';
 import { DEFAULT_VENUE, type VenueId } from '../venues/catalog';
 import { buildVenue } from '../venues';
 import { Confetti } from '../venues/kit/confetti';
+import { gradeShader } from '../venues/kit/grade';
 import { HANDHELD_SHADER } from '../venues/kit/handheld';
 import type { Look, Venue, VenueFrame } from '../venues/types';
 import { Director } from './Director';
@@ -73,6 +74,8 @@ export class Stage {
       focus,
       cast,
       characters: Object.keys(cast.crowd.data.characters),
+      // The renderer caps this at what the graphics card does.
+      anisotropy: 8,
     });
     return new Stage(canvas, venue, cast, g, opts);
   }
@@ -87,6 +90,7 @@ export class Stage {
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.3, 4000);
   private composer: EffectComposer | null = null;
   private handheld: ShaderPass | null = null;
+  private grade: ShaderPass | null = null;
   private readonly show: LightShow;
   private readonly beams: Beams;
   private readonly crowd: Figures;
@@ -216,7 +220,7 @@ export class Stage {
       band: this.band,
       shot: this.director.shot.name,
     };
-    if (g.glow || venue.handheld) this.buildComposer();
+    if (g.glow || venue.handheld || venue.grade) this.buildComposer();
     this.applySize();
   }
 
@@ -305,6 +309,7 @@ export class Stage {
     this.composer?.setPixelRatio(ratio);
     this.composer?.setSize(w, h);
     if (this.handheld) this.handheld.uniforms.uAspect.value = w / Math.max(1, h);
+    if (this.grade) this.grade.uniforms.uAspect.value = w / Math.max(1, h);
     this.mirror?.setSize(Math.max(1, Math.round((w * ratio) / 2)), Math.max(1, Math.round((h * ratio) / 2)));
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
@@ -439,6 +444,8 @@ export class Stage {
     this.crowd.focus(this.camera.position);
     const scale = this.renderer.domElement.height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.beams.update(this.camera, scale);
+    if (this.venue.pools !== undefined) this.beams.pools(this.venue.pools);
+    else for (const c of shared.uPoolCol.value) c.setRGB(0, 0, 0);
     this.sparks.setScale(scale);
     this.smoke.setScale(scale);
     this.confetti?.setScale(scale);
@@ -688,6 +695,10 @@ export class Stage {
     if (this.g.glow) {
       const [strength, radius, threshold] = this.venue.bloom ?? [0.2, 0.45, 1.0];
       composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), strength, radius, threshold));
+    }
+    if (this.venue.grade) {
+      this.grade = new ShaderPass(gradeShader(this.venue.grade));
+      composer.addPass(this.grade);
     }
     if (this.venue.handheld) {
       this.handheld = new ShaderPass(HANDHELD_SHADER);
