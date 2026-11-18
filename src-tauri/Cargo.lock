@@ -3808,7 +3808,7 @@ dependencies = [
 
 [[package]]
 name = "soundwave"
-version = "1.0.1"
+version = "1.0.2"
 dependencies = [
  "cpal",
  "discord-rich-presence",
