@@ -212,6 +212,7 @@ export class Stage {
       wash: this.wash,
       finale: 0,
       camera: this.camera,
+      height: 720,
       band: this.band,
       shot: this.director.shot.name,
     };
@@ -404,6 +405,7 @@ export class Stage {
       energy: this.energy,
       finale: Math.max(0, this.finaleLeft),
       shot: this.director.shot.name,
+      height: this.renderer.domElement.height,
     });
     this.venue.update(fr);
 

@@ -107,6 +107,7 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
     if (island) shared.uIsland.value.set(island.center[0], island.center[2], island.a, island.b);
     shared.uHazeFar.value.setRGB(0.007, 0.018, 0.08);
     shared.uHazeDensity.value = 0.0024;
+    shared.uGlowFall.value = 0.0006;
     shared.uCrowdMap.value = crowdMap;
     shared.uCrowdRect.value.set(CROWD_RECT.x, CROWD_RECT.z, 1 / CROWD_RECT.w, 1 / CROWD_RECT.d);
     for (const c of shared.uLightCol.value) c.setRGB(0, 0, 0);

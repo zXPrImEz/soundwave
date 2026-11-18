@@ -50,6 +50,8 @@ export interface VenueFrame {
   /** Seconds of the finale left (0 outside it). */
   finale: number;
   camera: THREE.PerspectiveCamera;
+  /** Height of the picture in pixels (for things drawn a pixel wide). */
+  height: number;
   band: Figures;
   /** The shot on screen. */
   shot: string;

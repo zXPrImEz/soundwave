@@ -70,6 +70,15 @@ export const shared = {
   uLightCol: { value: Array.from({ length: LIGHTS }, () => new THREE.Color(0, 0, 0)) },
   /** A strobe or blinder flash over the whole room, 0..1. */
   uFlash: { value: 0 },
+  /** Light that is everywhere in a venue (moon, sky, spill), for its own surfaces. */
+  uAmbient: { value: new THREE.Color(0.02, 0.02, 0.03) },
+  /** How strongly the stage's glow (uGlowPos) lights a venue's own surfaces, and how far it reaches, metres. */
+  uGlowLight: { value: new THREE.Vector2(1, 20) },
+  /** A mirror ball: its centre, and how bright the spots it throws are; and how far it has turned. */
+  uBall: { value: new THREE.Vector4(0, -100, 0, 0) },
+  uBallTurn: { value: 0 },
+  /** How fast the stage's glow on the people falls off with distance (indoors it reaches less far). */
+  uGlowFall: { value: 0.0006 },
 };
 
 /** Noise, haze and the screen content, shared by the fragment shaders. */
@@ -104,6 +113,7 @@ uniform float uFire;
 uniform vec4 uLight[${LIGHTS}];
 uniform vec3 uLightCol[${LIGHTS}];
 uniform float uFlash;
+uniform float uGlowFall;
 
 float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
 float hash21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }

@@ -143,7 +143,7 @@ void main() {
   vec3 toGlow = uGlowPos - vWPos;
   float gd = length(toGlow);
   toGlow /= gd;
-  float stage = 1.0 / (1.0 + gd * gd * 0.0006);
+  float stage = 1.0 / (1.0 + gd * gd * uGlowFall);
   float wrap = max(0.0, dot(n, toGlow) * 0.6 + 0.4);
   vec3 stageCol = mix(uKey, vec3(1.0), 0.35) * uScreenLevel;
   // People standing shoulder to shoulder shade each other below the shoulders.
@@ -428,7 +428,7 @@ function finish(mesh: THREE.InstancedMesh, count: number) {
 }
 
 /** Small deterministic generator, so the same crowd turns up every time. */
-function rng(seed: number) {
+export function rng(seed: number) {
   let s = seed >>> 0;
   return () => {
     s = (s + 0x6d2b79f5) >>> 0;
@@ -439,11 +439,11 @@ function rng(seed: number) {
   };
 }
 
-const BRIGHT = ['#ff3d9a', '#33d8ff', '#b6ff3d', '#ffffff', '#9a5cff', '#ff8a2a', '#ffd23d', '#2a6bff', '#ff4d4d'];
-const DARK = ['#101018', '#1c1c28', '#2a2a36', '#14203a'];
-const BOTTOMS = ['#10142a', '#1a2a55', '#15151a', '#2a3460', '#3a3a44', '#4a3a2a'];
-const CALM = ['dance', 'dance', 'clap', 'headbang'];
-const HYPE = ['cheer', 'cheer', 'fistpump', 'excited', 'excited', 'headbang'];
+export const BRIGHT = ['#ff3d9a', '#33d8ff', '#b6ff3d', '#ffffff', '#9a5cff', '#ff8a2a', '#ffd23d', '#2a6bff', '#ff4d4d'];
+export const DARK = ['#101018', '#1c1c28', '#2a2a36', '#14203a'];
+export const BOTTOMS = ['#10142a', '#1a2a55', '#15151a', '#2a3460', '#3a3a44', '#4a3a2a'];
+export const CALM = ['dance', 'dance', 'clap', 'headbang'];
+export const HYPE = ['cheer', 'cheer', 'fistpump', 'excited', 'excited', 'headbang'];
 /** People closer than this to a low camera are drawn with the detailed mesh, metres. */
 const NEAR_CAMERA = 12;
 
@@ -513,7 +513,11 @@ export function makeCrowd(
 }
 
 /** The band on its marks: guitar and bass turned in toward the singer, `focus` (a band key) lit a little more. */
-export function makeBand(data: VenueData, band: Record<string, { character: string; clip: string }>, focus?: string): Person[] {
+export function makeBand(
+  data: Pick<VenueData, 'band'>,
+  band: Record<string, { character: string; clip: string }>,
+  focus?: string,
+): Person[] {
   const turn: Record<string, number> = { lead: 0.42, bass: -0.42 };
   return Object.entries(band).flatMap(([part, who]) => {
     const pos = data.band[part];
