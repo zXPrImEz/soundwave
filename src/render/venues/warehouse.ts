@@ -84,8 +84,8 @@ export function buildWarehouse(ctx: VenueContext): Venue {
   // The stage: a black riser, a wall of LEDs on scaffolding behind it, the DJ's booth in the middle.
   b.box(black, [26, DECK, STAGE_FRONT - BACK], [0, DECK / 2, (STAGE_FRONT + BACK) / 2]);
   b.panel(deck, 26, STAGE_FRONT - BACK - 0.2, [0, DECK + 0.005, (STAGE_FRONT + BACK) / 2], 0, -Math.PI / 2);
-  for (let x = -12; x <= 12; x += 3) b.rod(steel, [x, 0, BACK + 2.2], [x, 11, BACK + 2.2], 0.06, 6);
-  for (const y of [1.6, 10.6]) b.truss(steel, [-12.4, y, BACK + 2.1], [12.4, y, BACK + 2.1], 0.35);
+  for (let x = -13.5; x <= 13.5; x += 3) b.rod(steel, [x, 0, BACK + 2.2], [x, 12, BACK + 2.2], 0.06, 6);
+  for (const y of [1.6, 11.6]) b.truss(steel, [-13.6, y, BACK + 2.1], [13.6, y, BACK + 2.1], 0.35);
   // Crowd barrier.
   b.box(steel, [30, 1.15, 0.12], [0, 0.6, STAGE_FRONT + 2.4]);
   for (let x = -14; x <= 14; x += 2) b.box(steel, [0.08, 1.15, 0.9], [x, 0.58, STAGE_FRONT + 2.8]);
@@ -107,9 +107,9 @@ export function buildWarehouse(ctx: VenueContext): Venue {
   const owned: { dispose(): void }[] = [{ dispose: () => disposeTree(root) }];
 
   // The LED wall and the strip on the booth.
-  const wall = new LedScreen([176, 64], ['tunnel', 'bars', 'stripes', 'grid', 'rings', 'kaleido'], 2.1, 1);
-  const wallMesh = new THREE.Mesh(new THREE.PlaneGeometry(22, 8), wall.material);
-  wallMesh.position.set(0, 6.2, BACK + 2.4);
+  const wall = new LedScreen([208, 76], ['tunnel', 'bars', 'stripes', 'grid', 'rings', 'kaleido'], 2.1, 1);
+  const wallMesh = new THREE.Mesh(new THREE.PlaneGeometry(26, 9.5), wall.material);
+  wallMesh.position.set(0, 6.75, BACK + 2.4);
   const strip = new LedScreen([48, 10], ['bars', 'stripes', 'grid'], 2.4, 2);
   const stripMesh = new THREE.Mesh(new THREE.PlaneGeometry(4.3, 0.9), strip.material);
   stripMesh.position.set(0, DECK + 0.52, -10.39);
@@ -293,7 +293,7 @@ export function buildWarehouse(ctx: VenueContext): Venue {
         // A chase runs back through the rows on the beat; the colours trade places every bar.
         const row = BAR_Z.indexOf(z);
         const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - row * 0.18) * Math.PI)), 6);
-        const lvl = (0.25 + 0.75 * busy) * (0.45 + 0.55 * chase) * 2.2 + s.overdrive;
+        const lvl = (0.12 + 0.88 * busy) * (0.3 + 0.7 * chase) * 2 + s.overdrive;
         color.copy((row + s.bar) % 2 ? f.key : f.accent).multiplyScalar(lvl);
         bars.setColorAt(i, color);
         i++;

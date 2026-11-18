@@ -38,6 +38,7 @@ export function buildBasement(ctx: VenueContext): Venue {
   const black = surface({ color: 0x0c0c0e, rough: 0.6 });
   const metal = surface({ pattern: 'metal', color: 0x4a4844, rough: 0.4, metal: 0.8, scale: 0.5 });
   const lamp = glow(0xffb070, 3);
+  const cloth = surface({ pattern: 'fabric', color: 0x26242a, rough: 1, scale: 0.3 });
 
   b.panel(floor, HALF * 2, HALF * 2, [0, 0, 0], 0, -Math.PI / 2);
   b.panel(ceiling, HALF * 2, HALF * 2, [0, HEIGHT, 0], 0, Math.PI / 2);
@@ -51,7 +52,7 @@ export function buildBasement(ctx: VenueContext): Venue {
   b.rod(metal, [-HALF, HEIGHT - 0.6, -2.0], [HALF, HEIGHT - 0.6, -2.0], 0.045, 8);
   b.box(metal, [0.4, 0.05, HALF * 2], [5.5, HEIGHT - 0.45, 0]);
   // The DJ's table with two decks, a mixer and a lamp.
-  b.box(black, [2.4, 0.9, 0.9], [BOOTH[0], 0.45, BOOTH[2]]);
+  b.box(cloth, [2.4, 0.9, 0.9], [BOOTH[0], 0.45, BOOTH[2]]);
   for (const x of [-0.8, 0.8]) b.drum(metal, 0.17, 0.04, [x, 0.9, BOOTH[2] - 0.05], 24);
   b.box(black, [0.36, 0.08, 0.42], [0, 0.94, BOOTH[2] - 0.05]);
   b.rod(metal, [1.05, 0.9, -0.3], [1.0, 1.3, -0.1], 0.008, 4);
@@ -116,7 +117,6 @@ export function buildBasement(ctx: VenueContext): Venue {
     shot('close', [0.7, 1.5, 1.45], [0, 1.35, -0.6], 78, 'pull', 0.4, 'busy', 1.8),
     shot('aerial', [-6.5, 3.05, 6.5], [0, 0.4, -1], 96, 'push', 1.2, 'all', 1),
     shot('behind', [0.5, 1.8, -2.4], [0, 1.1, 4], 94, 'truck', 0.6, 'peak', 1.4),
-    shot('decks', [0.25, 1.75, 0.95], [0, 0.85, -0.05], 70, 'orbit', 0.3, 'peak', 1),
     ...bandShots(band, ctx.part, (p) => [0, p[1], 3], 2.4, 70),
   ];
 
@@ -216,7 +216,7 @@ export function buildBasement(ctx: VenueContext): Venue {
           src,
           11,
           (k ? -1 : 1) * 0.75,
-          -0.12 + 0.04 * Math.sin(f.time * 0.8 + k),
+          -0.05 + 0.02 * Math.sin(f.time * 0.8 + k),
           1.0,
           18,
           col,

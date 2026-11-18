@@ -426,7 +426,7 @@ function phoneLights(count: number, outer: number) {
         // Raised one by one as the light comes on, swaying a little.
         float up = smoothstep(aSeed * 0.8, aSeed * 0.8 + 0.2, uOn);
         vA = up * (0.7 + 0.3 * sin(uTime * (1.0 + aSeed * 2.0) + aSeed * 40.0));
-        gl_PointSize = up > 0.01 ? max(1.5, 90.0 / -mv.z) : 0.0;
+        gl_PointSize = up > 0.01 ? max(2.0, 150.0 / -mv.z) : 0.0;
         gl_Position = projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */ `
@@ -435,7 +435,7 @@ function phoneLights(count: number, outer: number) {
       void main() {
         float d = length(gl_PointCoord - 0.5);
         float k = exp(-d * d * 40.0);
-        gl_FragColor = vec4(vec3(0.85, 0.9, 1.0) * k * vA * 1.6, 1.0);
+        gl_FragColor = vec4(vec3(0.85, 0.9, 1.0) * k * vA * 2.4, 1.0);
         ${OUTPUT}
       }`,
   });

@@ -52,7 +52,8 @@ vec3 look(float which, vec2 uv) {
     return ramp(uv.y) * on * (1.0 + step(h - 0.04, uv.y) * 1.5);
   }
   if (which < 1.5) {
-    float d = max(abs(c.x), abs(c.y));
+    // Frames the shape of the screen, rushing out of its middle.
+    float d = max(abs(uv.x - 0.5), abs(uv.y - 0.5));
     float w = fract(log(d + 0.02) * 1.6 - uBeat * 0.5);
     float edge = smoothstep(0.0, 0.08, w) * smoothstep(0.3, 0.12, w);
     return ramp(fract(d * 1.5 + uBeat * 0.125)) * edge * (0.6 + 0.8 * uPulse);
