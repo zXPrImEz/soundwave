@@ -6,6 +6,7 @@ import { shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
 import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
+import { Bulbs } from './kit/bulbs';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel } from './kit/model';
 import { gearRoles } from './kit/roles';
@@ -152,7 +153,9 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const cases = instances(dressed.protos.get('barcase')!, barSpots, gear.roles.Dark);
   const cables = instances(dressed.protos.get('cable')!, [...barSpots, ...barSpots], gear.roles.Black);
   const strobes = instances(dressed.protos.get('strobe')!, data.instances.strobe ?? [], strobeGlow);
-  root.add(bars, cases, cables, strobes);
+  const bulbs = new Bulbs(dressed.protos.get('bulb')!, data.instances.bulb ?? []);
+  root.add(bars, cases, cables, strobes, bulbs.mesh);
+  owned.push(bulbs);
   const barHeight = new Float32Array(barSpots.length).fill(10);
   const strobeLevel = new Float32Array(strobes.count);
 
@@ -287,6 +290,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     // The emblem before the wall breathes with the bass and burns white on the bar.
     emblemGlow.uniforms.uColor.value.copy(f.key).lerp(WHITE, 0.35 + 0.5 * f.barPulse);
     emblemGlow.uniforms.uLevel.value = 1.2 + 2.2 * f.low + 1.5 * f.barPulse + 2 * s.overdrive;
+    bulbs.update(f);
     gear.jog.uniforms.uLevel.value = 1.4 + 2 * f.pulse;
     gear.jog.uniforms.uColor.value.copy(f.accent);
     gear.meter.uniforms.uLevel.value = 1 + 2.5 * f.low;

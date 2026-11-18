@@ -280,6 +280,29 @@ def build(k):
         for z in (-4, 12, 28):
             k.moving_head((side * (HALF - 0.4), 9.5, z), (-side * 0.75, -0.62, 0.15), 'Moon', 26, 0.09, body=False)
 
+    # Rows of small lamps along the edges: the galleries' rails, the crane's bridge, the stage's
+    # lip, the main truss, the wall's frame (the game lights them, see Bulbs).
+    k.proto('bulb', 'Glow.Bulb', lambda b: k.sphere('Glow.Bulb', 0.06, (0, 0, 0), 8, 5, b=b))
+    for side in (-1, 1):
+        z = -2.0
+        while z <= FRONT - 4:
+            k.instance('bulb', (side * (HALF - GALLERY) - side * 0.2, GALLERY_Y - 0.22, z))
+            z += 0.5
+    x = -HALF + 1.5
+    while x <= HALF - 1.5:
+        k.instance('bulb', (x, 10.6, 26.5))
+        x += 0.5
+    x = -12.8
+    while x <= 12.8:
+        k.instance('bulb', (x, DECK + 0.06, STAGE_FRONT + 0.06))
+        k.instance('bulb', (x, 11.35, STAGE_FRONT - 0.2))
+        k.instance('bulb', (x, 11.75, BACK + 2.45))
+        x += 0.4
+    for sx in (-13.25, 13.25):
+        y = 2.0
+        while y <= 11.5:
+            k.instance('bulb', (sx, y, BACK + 2.45))
+            y += 0.4
     # ------------------------------------------------------------- the floor
     k.barrier((-15, 0, STAGE_FRONT + 2.6), (15, 0, STAGE_FRONT + 2.6))
     for side in (-1, 1):

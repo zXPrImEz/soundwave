@@ -8,6 +8,8 @@ export async function buildVenue(id: VenueId, ctx: VenueContext): Promise<Venue>
       return (await import('./moonrise')).buildMoonrise(ctx);
     case 'mainstage':
       return (await import('./mainstage')).buildMainstage(ctx);
+    case 'monolith':
+      return (await import('./monolith')).buildMonolith(ctx);
     case 'warehouse':
       return (await import('./warehouse')).buildWarehouse(ctx);
     case 'arena':
