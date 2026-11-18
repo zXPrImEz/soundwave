@@ -2255,7 +2255,8 @@ img.cover {
   height: 2.1rem;
 }
 .part-row,
-.diff-row {
+.diff-row,
+.venue-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
@@ -2310,6 +2311,15 @@ img.cover {
   position: absolute;
   top: 0.3rem;
   right: 0.3rem;
+}
+.choice.venue {
+  font-size: 0.85rem;
+  min-height: 2.75rem;
+}
+.venue-blurb {
+  min-height: 1.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
 }
 .choice.diff {
   flex-direction: column;

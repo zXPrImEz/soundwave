@@ -4,6 +4,7 @@ import { getEngine } from '../audio/engine';
 import { gpuKnown, resolveGraphics, type GraphicsSettings } from '../game/graphics';
 import { acquireMenuStage, releaseMenuStage } from '../render/aurora/menuStage';
 import type { StageView } from '../render/stage/StageView';
+import type { VenueId } from '../render/venues/catalog';
 
 /**
  * The backdrop behind menus: the 3D stage idling with slow camera moves, reacting to whatever the
@@ -14,7 +15,7 @@ import type { StageView } from '../render/stage/StageView';
  *
  * `onReady` is told once the stage has drawn (or cannot be built): the loading screen waits for it.
  */
-export function MenuBackground({ graphics, onReady }: { graphics: GraphicsSettings; onReady?(): void }) {
+export function MenuBackground({ graphics, venue, onReady }: { graphics: GraphicsSettings; venue: VenueId; onReady?(): void }) {
   const stageRef = useRef<HTMLDivElement>(null);
   const readyRef = useRef(onReady);
   readyRef.current = onReady;
@@ -28,7 +29,7 @@ export function MenuBackground({ graphics, onReady }: { graphics: GraphicsSettin
       acquired = true;
       const g = resolveGraphics(graphics);
       // Menus never need the full show: cap the frame rate so the machine stays light.
-      const stage = acquireMenuStage(stageRef.current!, { ...g, fpsCap: g.fpsCap && g.fpsCap < 60 ? g.fpsCap : 60, effects: 'off' });
+      const stage = acquireMenuStage(stageRef.current!, { ...g, fpsCap: g.fpsCap && g.fpsCap < 60 ? g.fpsCap : 60, effects: 'off' }, venue);
       stage.ready.then(ready, (err) => {
         console.warn('3D stage unavailable', err);
         ready();
@@ -56,6 +57,6 @@ export function MenuBackground({ graphics, onReady }: { graphics: GraphicsSettin
       cancelAnimationFrame(raf);
       if (acquired) releaseMenuStage();
     };
-  }, [graphics]);
+  }, [graphics, venue]);
   return <div ref={stageRef} className="layer stage-host" />;
 }

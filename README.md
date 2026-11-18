@@ -17,7 +17,7 @@ A rhythm game for your own music. Drop in a song (MP3, WAV, FLAC, OGG, M4A). The
 | Hard       | 4     | sixteenths, two-note chords              |
 | Expert     | 5     | literal transcription, three-note chords |
 
-You play them on a 3D note highway with the keyboard, a controller or a touchscreen, in front of a live 3D festival stage that follows the music: a band, a crowd of thousands, beams, screens and pyro. The game opens behind a loading screen that stays until the library and the stage are ready. Features: sustains, streak multiplier (up to ×6), overdrive phrases (Space doubles the multiplier, up to ×12), Perfect/Great/Good timing, star rating measured against a flawless run without overdrive (one to five stars at 3.5%, 8%, 15%, 46% and 77% of it, and gold stars beyond it, which takes overdrive), best scores, tap calibration and key rebinding.
+You play them on a 3D note highway with the keyboard, a controller or a touchscreen, in front of a live 3D stage that follows the music: a band, a crowd, beams, lasers, screens and pyro. You choose where the show takes place: Moonrise (open air by a lake at night), Mainstage (a giant festival stage, from sunset into the night), Warehouse (lasers and strobes in a factory hall), Arena 360 (in the round, with phone lights in the stands), Basement (a DJ in the middle of the crowd, filmed by hand) or Bar (a small stage with a mirror ball), or a different one for every song. The game opens behind a loading screen that stays until the library and the stage are ready. Features: sustains, streak multiplier (up to ×6), overdrive phrases (Space doubles the multiplier, up to ×12), Perfect/Great/Good timing, star rating measured against a flawless run without overdrive (one to five stars at 3.5%, 8%, 15%, 46% and 77% of it, and gold stars beyond it, which takes overdrive), best scores, tap calibration and key rebinding.
 
 You pick up to four songs as a setlist, choose a part and a difficulty for the set and play the songs back to back, with a result after each and a total at the end. A part a song hardly has compared with the rest of it (almost no vocals, say) is switched off for that song; writing a chart for it in the track editor switches it back on. The main menu has two tabs: **Play**, with your setlist and a few sets dealt from your library (a shuffle, your newest songs, songs without a score), and **Edit**, with your tracks to open in the track editor. `Q` and `E`, or a controller's shoulder buttons, switch between them.
 
@@ -197,7 +197,11 @@ Unit tests cover:
 
 ## The 3D stage
 
-The stage is built in Blender and drawn by the game's own renderer (`src/render/aurora`). Three scripts regenerate everything the repository ships in `public/stage/aurora`:
+The stage (`src/render/stage/Stage.ts`) brings what every venue shares: the renderer, the light show that follows the music, the camera director, the band, the crowd, the beams, sparks, smoke, flames and confetti. A venue (`src/render/venues`) brings the place: its scene, its camera shots, its fixtures, where the crowd stands, its colours and its set pieces, which it moves every frame. `src/render/venues/catalog.ts` lists them; adding one is a file in that folder and a line in `index.ts`.
+
+Mainstage, Warehouse, Arena 360, Basement and Bar are built in code from a kit in `src/render/venues/kit`: surfaces drawn in the shader (concrete, brick, wood, metal, fabric, grass, and a wet floor that mirrors the show), LED screens whose pictures are made from the music, lasers that stay a line at any distance, light bars, confetti, the room's own lights, and the look of a hand-held camera. Nothing for them is downloaded. Strobes never flash more than three times a second (`kit/strobe.ts`), the limit for photosensitive viewers.
+
+Moonrise, and the band and the crowd every venue shares, are built in Blender and drawn by the game's own renderer (`src/render/aurora`). Three scripts regenerate everything the repository ships in `public/stage/aurora`:
 
 ```
 blender -b --factory-startup -P tools/stage/aurora/build_venue.py -- --out public/stage/aurora
@@ -215,7 +219,7 @@ blender -b --factory-startup -P tools/stage/aurora/build_cast.py -- --out public
 
 The game draws the stage in a worker of its own (`src/render/stage/StageView.ts`): the page hands the canvas over (`OffscreenCanvas`) and only tells the stage what the music is doing, so however long a stage frame takes, the menus, the highway and the input never wait for it. Where a worker cannot draw with WebGL, the same code runs on the page instead. Its shaders are compiled in parallel before its first frame, and only the few people close to the camera are drawn with the detailed figure.
 
-During development, `/#stage?preset=high&shot=hero&level=0.9` shows the stage alone with a simulated song (drawn on the page, so `window.__stage` can be reached from the console).
+During development, `/#stage?preset=high&shot=hero&level=0.9&venue=warehouse` shows the stage alone with a simulated song (drawn on the page, so `window.__stage` can be reached from the console).
 
 ### Optional: downloaded characters
 

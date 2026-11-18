@@ -137,8 +137,8 @@ export class Beams {
     const c = new THREE.Color();
     this.fixtures.forEach((f, i) => {
       const st = this.states[i];
-      const len = LENGTH[f.group] ?? 100;
-      const radius = len * (SPREAD[f.group] ?? 0.012);
+      const len = f.length ?? LENGTH[f.group] ?? 100;
+      const radius = len * (f.spread ?? SPREAD[f.group] ?? 0.012);
       q.copy(this.base[i]).multiply(TMP.setFromEuler(e.set(st.tilt, 0, st.pan)));
       p.set(...f.pos);
       m.compose(p, q, s.set(radius, len, radius));

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { applyDisplayMode, inDesktopApp } from './game/displayMode';
 import { loadSettings } from './game/settings';
 import { preloadStage } from './render/stage/StageView';
+import { menuVenue } from './render/venues/catalog';
 import { App } from './ui/App';
 import { bootDone, bootFonts } from './ui/boot';
 import './ui/fonts/archivo/archivo.css';
@@ -39,7 +40,7 @@ if (import.meta.env.DEV && location.hash.startsWith('#stage')) {
   void import('./debug/StagePreview').then((m) => m.runStagePreview(root));
 } else {
   // The stage's worker starts on the venue at once, while the page is still being put together.
-  preloadStage();
+  preloadStage(menuVenue(loadSettings().venue));
   createRoot(root).render(
     <StrictMode>
       <App />

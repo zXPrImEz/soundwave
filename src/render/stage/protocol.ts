@@ -1,6 +1,7 @@
 import type { BandLevels } from '../../audio/bands';
 import type { GraphicsSettings } from '../../game/graphics';
-import type { StageOptions } from '../aurora/AuroraStage';
+import type { VenueId } from '../venues/catalog';
+import type { StageOptions } from './Stage';
 
 /** What the music is doing, as the page last heard it. The stage reads the latest on each of its frames. */
 export interface StageInput {
@@ -22,7 +23,7 @@ export type Beat = 'beat' | 'downbeat';
 
 /** From the page to the stage host. Every message but `preload` and `visible` names one stage. */
 export type ToStage =
-  | { type: 'preload' }
+  | { type: 'preload'; venue: VenueId }
   | { type: 'visible'; visible: boolean }
   | {
       type: 'create';

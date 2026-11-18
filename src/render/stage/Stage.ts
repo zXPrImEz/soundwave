@@ -1,28 +1,32 @@
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import type { BandLevels } from '../../audio/bands';
 import type { Part } from '../../chart/types';
-import { LEVEL_SHARE, type GraphicsSettings, type Level } from '../../game/graphics';
-import { Director, buildShots } from '../stage/Director';
-import { LightShow, PALETTES, type Rgb, type ShowState } from '../stage/LightShow';
-import { Particles } from '../stage/Particles';
-import { loadVenue, type VenueAssets, type VenueData } from './assets';
-import { Beams } from './beams';
-import { CROWD_RECT, buildCrowdMap } from './crowdMap';
-import { Figures, makeBand, makeCrowd, type Person } from './figures';
-import { Flames } from './flames';
-import { applyVenueMaterials } from './materials';
-import { shared } from './shared';
-import { buildSky } from './sky';
-import { terrainHeight } from './terrain';
+import type { GraphicsSettings, Level } from '../../game/graphics';
+import { loadCast, type Cast } from '../aurora/assets';
+import { Figures } from '../aurora/figures';
+import { Flames } from '../aurora/flames';
+import { Beams } from '../aurora/beams';
+import { shared } from '../aurora/shared';
+import { DEFAULT_VENUE, type VenueId } from '../venues/catalog';
+import { buildVenue } from '../venues';
+import { Confetti } from '../venues/kit/confetti';
+import { HANDHELD_SHADER } from '../venues/kit/handheld';
+import type { Look, Venue, VenueFrame } from '../venues/types';
+import { Director } from './Director';
+import { LightShow, PALETTES, type ShowState } from './LightShow';
+import { Particles } from './Particles';
 
 export interface StageOptions {
   mode: 'play' | 'menu';
   /** The part being played: that band member gets the close-ups. */
   part?: Part;
+  /** Where the show takes place (Moonrise when not given). */
+  venue?: VenueId;
 }
 
 export interface StageFrame {
@@ -40,25 +44,7 @@ const SPARKS: Record<Level, number> = { off: 0, low: 1500, medium: 4000, high: 9
 const SPARKS_PER_RAY: Record<Level, number> = { off: 0, low: 6, medium: 12, high: 22 };
 const SMOKE: Record<Level, number> = { off: 0, low: 250, medium: 700, high: 1400 };
 const CO2_PER_JET: Record<Level, number> = { off: 0, low: 6, medium: 14, high: 24 };
-/** Camera spots the director adds itself (see buildShots), for placing detailed crowd figures. */
-const EXTRA_CAMERAS: [number, number, number][] = [
-  [-62, 7, 48],
-  [62, 7, 48],
-  [0, 1.6, 26],
-  [-7, 5, 5],
-  [7, 5, 5],
-  [0, 6, 13],
-];
-/** The order the shaders know the players in. */
-const PLAYERS = ['lead', 'vox', 'bass', 'drums'];
-
-/** The looks the show moves through; they stand in for the light show's own palettes one to one. */
-const LOOKS: { key: Rgb; accent: Rgb; wash: Rgb }[] = [
-  { key: [1, 0.4, 0.76], accent: [0.42, 0.9, 1], wash: [0.3, 0.2, 1] },
-  { key: [0.4, 0.84, 1], accent: [0.92, 0.95, 1], wash: [0.08, 0.3, 1] },
-  { key: [1, 0.3, 0.6], accent: [0.76, 0.52, 1], wash: [0.72, 0.15, 0.72] },
-  { key: [0.62, 0.56, 1], accent: [1, 0.6, 0.86], wash: [0.08, 0.5, 0.78] },
-];
+const CONFETTI: Record<Level, number> = { off: 0, low: 900, medium: 2400, high: 5000 };
 const EXPOSURE = 0.86;
 
 /** A pulse `age` seconds old: it swells to full strength over `attack` seconds, then rings out. */
@@ -68,17 +54,27 @@ function swell(age: number, attack: number, decay: number): number {
 }
 
 /**
- * The Moonrise venue in real time: painted forms, a polished deck, screens, haze, a clouded night
- * sky, moving beams with star flares, a band and a crowd that move with the beat. Same contract as
- * the first 3D stage, so the game and the menus can drive either.
+ * The 3D stage in real time: a venue (see venues/), and in it a band and a crowd that move with the
+ * beat, moving-head beams, sparks, smoke, flames and confetti, a light show that follows the music
+ * and a camera director that cuts to it. The venue brings the place; everything here is shared.
  */
-export class AuroraStage {
+export class Stage {
   /**
    * Builds the stage on `canvas`: a page's own canvas, or one handed to a worker (see stageHost),
    * where it runs beside the page instead of in it. Nothing here touches the page.
    */
-  static async create(canvas: HTMLCanvasElement | OffscreenCanvas, g: GraphicsSettings, opts: StageOptions): Promise<AuroraStage> {
-    return new AuroraStage(canvas, await loadVenue(), g, opts);
+  static async create(canvas: HTMLCanvasElement | OffscreenCanvas, g: GraphicsSettings, opts: StageOptions): Promise<Stage> {
+    const cast = await loadCast();
+    const focus = opts.part === 'vocals' ? 'vox' : opts.part;
+    const venue = await buildVenue(opts.venue ?? DEFAULT_VENUE, {
+      g,
+      menu: opts.mode === 'menu',
+      part: opts.part,
+      focus,
+      cast,
+      characters: Object.keys(cast.crowd.data.characters),
+    });
+    return new Stage(canvas, venue, cast, g, opts);
   }
 
   readonly director: Director;
@@ -90,43 +86,28 @@ export class AuroraStage {
   private readonly scene = new THREE.Scene();
   private readonly camera = new THREE.PerspectiveCamera(50, 1, 0.3, 4000);
   private composer: EffectComposer | null = null;
+  private handheld: ShaderPass | null = null;
   private readonly show: LightShow;
   private readonly beams: Beams;
   private readonly crowd: Figures;
   private readonly band: Figures;
-  /**
-   * The lake, and the picture it mirrors: the scene above it, drawn once more each frame from the
-   * camera's reflection below the surface.
-   */
-  private water: THREE.Object3D | null = null;
+  /** A level surface's mirror image (see Venue.mirror): the scene drawn once more from below it. */
   private mirror: THREE.WebGLRenderTarget | null = null;
   private readonly mirrorCamera = new THREE.PerspectiveCamera();
-  /** The big wheel on the festival grounds, turning slowly. */
-  private wheel: THREE.Object3D | null = null;
-  /** Flame jets along the front of the deck; they fire with the fireworks and through overdrive. */
-  private flames: Flames | null = null;
+  private readonly flames: Flames | null = null;
+  private readonly confetti: Confetti | null = null;
   /** Seconds of finale left, the time to its next salvo, and how many it has fired. */
   private finaleLeft = 0;
   private finaleNext = 0;
   private finaleShot = 0;
   private readonly sparks: Particles;
   private readonly smoke: Particles;
-  private readonly data: VenueData;
   private readonly owned: { dispose(): void }[] = [];
-  private readonly crowdMap: THREE.Texture;
-  /** The players' podiums: what rides on each, how far it may rise and how high it is now. */
-  private readonly lifts: {
-    part: string;
-    index: number;
-    group: THREE.Group;
-    person?: Person;
-    rest: number;
-    travel: number;
-    height: number;
-  }[] = [];
+  private readonly looks: Look[];
   private readonly key = new THREE.Color();
   private readonly accent = new THREE.Color();
   private readonly wash = new THREE.Color();
+  private readonly frame: VenueFrame;
   private lastFrame = performance.now();
   private lastRender = 0;
   private frameAvg = 16;
@@ -152,134 +133,90 @@ export class AuroraStage {
   private beatDrift = 0;
   private pendingBeat: StageFrame['beat'] = 'none';
   private disposed = false;
+  /** The band member picked out (the part being played). */
+  private readonly focus?: string;
 
   private constructor(
     private readonly canvas: HTMLCanvasElement | OffscreenCanvas,
-    assets: VenueAssets,
+    private readonly venue: Venue,
+    cast: Cast,
     private g: GraphicsSettings,
     opts: StageOptions,
   ) {
-    this.data = assets.data;
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: g.antialias, powerPreference: 'high-performance', alpha: false });
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = EXPOSURE;
+    this.renderer.toneMappingExposure = venue.exposure ?? EXPOSURE;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if (venue.background) this.renderer.setClearColor(new THREE.Color(...venue.background));
     // A graphics context can be taken away (driver reset, GPU under pressure). Asking to keep it
     // lets the browser hand it back, and the renderer rebuilds what it needs.
     canvas.addEventListener('webglcontextlost', this.onContextLost);
     canvas.addEventListener('webglcontextrestored', this.onContextRestored as EventListener);
     const menu = opts.mode === 'menu';
     this.show = new LightShow(menu);
-    this.director = new Director(buildShots(this.data.cameras, this.data.band, opts.part), menu ? 'calm' : 'auto', 7, menu);
+    this.director = new Director(venue.shots, menu ? 'calm' : 'auto', 7, menu);
+    this.looks = venue.looks;
+    this.owned.push(venue);
+    this.scene.add(venue.root);
 
-    const moon = this.data.moon;
-    shared.uGlowPos.value.set(...moon.center);
-    shared.uMoon.value.set(moon.center[0], moon.center[1], moon.center[2], moon.radius);
-    if (moon.arch) shared.uArch.value.set(moon.arch.halfWidth, moon.arch.height, moon.arch.power);
-
-    const sky = buildSky();
-    this.scene.add(sky);
-    this.owned.push(sky.geometry, sky.material);
-
-    const venue = assets.scene.clone(true);
-    this.owned.push(...applyVenueMaterials(venue, this.data.deck, g.lights === 'medium' || g.lights === 'high'));
-    this.scene.add(venue);
-    // Each podium and what stands on it moves as one.
-    for (const [part, p] of Object.entries(this.data.podiums ?? {})) {
-      const group = new THREE.Group();
-      venue.add(group);
-      for (const piece of venue.children.filter((o) => o.name.startsWith(`Podium_${part}_`))) group.add(piece);
-      this.lifts.push({ part, index: PLAYERS.indexOf(part), group, rest: this.data.band[part]?.[1] ?? 0, travel: p.travel, height: 0 });
-    }
-
-    // The land, the lake and the festival grounds around the stage.
-    const land = assets.scenery;
-    if (land) {
-      const scenery = land.scene.clone(true);
-      this.owned.push(...applyVenueMaterials(scenery, this.data.deck, false));
-      const wheel = new THREE.Group();
-      wheel.position.set(...land.data.wheel.center);
-      scenery.add(wheel);
-      wheel.updateMatrixWorld();
-      for (const part of scenery.children.filter((o) => o.name.startsWith('Wheel_'))) wheel.attach(part);
-      this.wheel = wheel;
-      this.scene.add(scenery);
-      shared.uMoonDir.value.set(...land.data.moon).normalize();
-      shared.uWaterLevel.value = land.data.terrain.water;
-      this.water = scenery.getObjectByName('Water') ?? null;
-      if (this.water && (g.lights === 'medium' || g.lights === 'high')) {
-        this.mirror = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
-        this.owned.push(this.mirror);
-      }
-      land.data.shore.slice(0, 8).forEach((s, i) => {
-        shared.uShore.value[i].set(...s.pos);
-        shared.uShoreCol.value[i].set(s.color);
-      });
-    }
-    const ground = (x: number, z: number) => terrainHeight(land?.data.terrain, x, z);
-
-    this.crowd = new Figures(assets.crowd);
-    const low = [
-      ...Object.values(this.data.cameras)
-        .map((c) => c.pos)
-        .filter((p) => p[1] < 10),
-      ...EXTRA_CAMERAS,
-    ];
-    const audience = makeCrowd(this.data, this.crowd.characters, LEVEL_SHARE[g.crowd], low, assets.crowd.data.sync, ground);
-    this.crowd.add(audience);
-    // The ground needs to know where they stand, to shade it under them.
-    this.crowdMap = buildCrowdMap(audience, LEVEL_SHARE[g.crowd]);
-    this.owned.push(this.crowdMap);
-    shared.uCrowdRect.value.set(CROWD_RECT.x, CROWD_RECT.z, 1 / CROWD_RECT.w, 1 / CROWD_RECT.d);
-    this.band = new Figures(assets.band);
-    // The part being played is picked out: more light on that player and under their feet.
-    const focus = opts.part === 'vocals' ? 'vox' : opts.part;
-    const players = makeBand(this.data, assets.band.data.band ?? {}, focus);
-    this.band.add(players, true);
-    for (const lift of this.lifts) lift.person = players.find((p) => p.part === lift.part);
-    PLAYERS.forEach((key, i) => {
-      const p = this.data.band[key];
-      if (p) shared.uBand.value[i].set(...p);
-      shared.uFeature.value[i] = !focus ? 0.6 : key === focus ? 1 : 0.4;
-    });
-    const island = this.data.island;
-    if (island) shared.uIsland.value.set(island.center[0], island.center[2], island.a, island.b);
+    this.crowd = new Figures(cast.crowd);
+    this.crowd.add(venue.audience);
+    this.band = new Figures(cast.band);
+    this.band.add(venue.players, true);
+    this.focus = opts.part === 'vocals' ? 'vox' : opts.part;
     this.scene.add(this.crowd.group, this.band.group);
     this.owned.push(this.crowd, this.band);
 
     // Lighter settings keep an even share of the moving heads.
     const share = BEAM_SHARE[g.beams];
-    this.beams = new Beams(this.data.fixtures.filter((_, i) => Math.floor((i + 1) * share) > Math.floor(i * share)));
+    this.beams = new Beams(venue.fixtures.filter((_, i) => Math.floor((i + 1) * share) > Math.floor(i * share)));
     this.scene.add(this.beams.group);
     this.owned.push(this.beams);
 
-    if (SPARKS[g.effects] && !menu) {
-      // Seven jets along the front edge of the deck, between the CO2 nozzles.
-      const deck = this.data.deck;
-      const bases: [number, number, number][] = [];
-      for (let j = 0; j < 7; j++) {
-        const a = Math.PI * (1.2 + (0.6 * j) / 6);
-        const sx = Math.sign(Math.cos(a)) * Math.abs(Math.cos(a)) ** (2 / deck.power);
-        const sy = Math.sign(Math.sin(a)) * Math.abs(Math.sin(a)) ** (2 / deck.power);
-        bases.push([deck.center[0] + sx * deck.a * 1.02, deck.height, deck.center[2] - sy * deck.b * 1.02]);
-      }
-      // And two more to each side of it, where the note lane does not stand in front of them.
-      for (const side of [-1, 1])
-        bases.push(
-          [deck.center[0] + side * (deck.a + 2.5), 1.9, deck.center[2] + 5],
-          [deck.center[0] + side * (deck.a + 8.5), 0.3, deck.center[2] + 6.5],
-        );
-      this.flames = new Flames(bases);
+    if (SPARKS[g.effects] && !menu && venue.flames?.length) {
+      this.flames = new Flames(venue.flames);
       this.scene.add(this.flames.mesh);
       this.owned.push(this.flames);
+    }
+    if (CONFETTI[g.effects] && !menu && venue.confetti?.length) {
+      this.confetti = new Confetti(CONFETTI[g.effects]);
+      this.scene.add(this.confetti.points);
+      this.owned.push(this.confetti);
     }
     this.sparks = new Particles(SPARKS[g.effects] || 1, THREE.AdditiveBlending);
     this.smoke = new Particles(SMOKE[g.effects] || 1, THREE.NormalBlending);
     this.scene.add(this.sparks.points, this.smoke.points);
     this.owned.push(this.sparks, this.smoke);
 
-    this.setLook(LOOKS[0], 1);
-    if (g.glow) this.buildComposer();
+    if (venue.mirror && (g.lights === 'medium' || g.lights === 'high')) {
+      this.mirror = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+      this.owned.push(this.mirror);
+    }
+
+    this.setLook(this.looks[0], 1);
+    this.frame = {
+      dt: 0,
+      time: 0,
+      beat: 'none',
+      clock: 0,
+      beats: 0,
+      pulse: 0,
+      barPulse: 0,
+      low: 0,
+      mid: 0,
+      high: 0,
+      energy: 0.3,
+      show: this.show.state,
+      key: this.key,
+      accent: this.accent,
+      wash: this.wash,
+      finale: 0,
+      camera: this.camera,
+      height: 720,
+      band: this.band,
+      shot: this.director.shot.name,
+    };
+    if (g.glow || venue.handheld) this.buildComposer();
     this.applySize();
   }
 
@@ -291,10 +228,11 @@ export class AuroraStage {
    *
    * Shaders are compiled for where they draw: with glow on, the scene is drawn into the glow's
    * buffer rather than the screen (no tone mapping there, linear colour: different shaders), and the
-   * lake's mirror into a buffer of its own. The glow's passes are compiled too.
+   * mirror into a buffer of its own. The glow's passes are compiled too.
    */
   async prepare(): Promise<void> {
     const r = this.renderer;
+    this.bind();
     const hidden: THREE.Object3D[] = [];
     this.scene.traverse((o) => {
       if (!o.visible) {
@@ -340,7 +278,7 @@ export class AuroraStage {
 
   /**
    * The song is over: for `seconds` the flame jets burn in one long burst, the fireworks go off
-   * one salvo after another, and the crowd applauds.
+   * one salvo after another, confetti flies and the crowd applauds.
    */
   finale(seconds = 4) {
     this.show.finale();
@@ -366,6 +304,7 @@ export class AuroraStage {
     this.renderer.setSize(w, h, false);
     this.composer?.setPixelRatio(ratio);
     this.composer?.setSize(w, h);
+    if (this.handheld) this.handheld.uniforms.uAspect.value = w / Math.max(1, h);
     this.mirror?.setSize(Math.max(1, Math.round((w * ratio) / 2)), Math.max(1, Math.round((h * ratio) / 2)));
     this.camera.aspect = w / Math.max(1, h);
     this.camera.updateProjectionMatrix();
@@ -406,8 +345,10 @@ export class AuroraStage {
     this.beats = Math.floor(this.beatClock);
     const bands = this.bandsIn;
     for (const e of this.show.update({ dt, beat, intensity: f.intensity, bands, overdrive: f.overdrive })) {
-      if (e.type === 'fireworks') this.fireworks(e.which);
-      else this.co2(e.strength);
+      if (e.type === 'fireworks') {
+        this.fireworks(e.which);
+        if (e.which === 'all') this.confetti?.burst(this.venue.confetti!, this.key, this.accent, 1);
+      } else this.co2(e.strength);
     }
     // In overdrive the jets keep time: all of them on the bar, every other one on the beats between.
     if (this.flames && this.finaleLeft <= 0 && this.show.state.overdrive > 0.5 && beat !== 'none') {
@@ -423,6 +364,7 @@ export class AuroraStage {
         this.finaleNext = 0.42;
         this.fireworks((['center', 'sides', 'all'] as const)[this.finaleShot % 3]);
         if (this.finaleShot % 3 === 2) this.co2(0.8);
+        if (this.finaleShot % 3 === 0) this.confetti?.burst(this.venue.confetti!, this.key, this.accent, 0.7);
         this.finaleShot++;
       }
     }
@@ -430,9 +372,9 @@ export class AuroraStage {
     // Through the finale the jets burn without a break, and are let go as it ends.
     this.flames?.hold(this.show.state.time, this.finaleLeft > 0);
     shared.uFire.value = this.flames?.glow(this.show.state.time) ?? 0;
-    this.sparks.update(dt, -9);
+    this.sparks.update(dt, this.venue.sparkGravity ?? -9);
     this.smoke.update(dt, 0.4);
-    if (this.wheel) this.wheel.rotation.z += dt * 0.045;
+    this.confetti?.update(dt);
     shared.uBurst.value.w *= Math.exp(-dt * 1.6);
     this.director.update(dt, beat === 'downbeat', this.show.state.level, f.barSeconds);
     this.energy += (f.intensity - this.energy) * Math.min(1, dt * 1.2);
@@ -446,59 +388,94 @@ export class AuroraStage {
       this.barAge = 0;
       this.barTail = this.barPulse;
     }
+    this.bind();
     this.applyShow(this.show.state, bands, dt);
-    this.moveLifts(this.show.state, dt);
+    const fr = this.frame;
+    Object.assign(fr, {
+      dt,
+      time: this.show.state.time,
+      beat,
+      clock: this.beatClock,
+      beats: this.beats,
+      pulse: this.pulse,
+      barPulse: this.barPulse,
+      low: this.low,
+      mid: this.mid,
+      high: this.high,
+      energy: this.energy,
+      finale: Math.max(0, this.finaleLeft),
+      shot: this.director.shot.name,
+      height: this.renderer.domElement.height,
+    });
+    this.venue.update(fr);
 
     const pose = this.director.pose();
-    // A close-up of a player follows their podium up and down.
-    const shot = this.director.shot.name;
-    const riding = shot === 'band' ? this.lifts : this.lifts.filter((l) => shot === `band-${l.part === 'vox' ? 'vocals' : l.part}`);
-    const raised = riding.reduce((sum, l) => sum + l.height, 0) / Math.max(1, riding.length);
+    const raised = this.venue.cameraLift?.(this.director.shot.name) ?? 0;
     pose.pos[1] += raised;
     pose.target[1] += raised;
+    const hand = this.venue.handheld ?? 0;
+    if (hand) {
+      // A camera operator's hands: slow drift, a little sway with the beat, never still.
+      const t = this.show.state.time;
+      const sway = (a: number, b: number) => Math.sin(t * a + b) * 0.6 + Math.sin(t * a * 2.3 + b * 1.7) * 0.4;
+      pose.pos[0] += hand * (0.09 * sway(0.7, 1) + 0.025 * this.pulse);
+      pose.pos[1] += hand * (0.07 * sway(0.9, 2) - 0.04 * this.pulse);
+      pose.target[0] += hand * 0.35 * sway(0.5, 3);
+      pose.target[1] += hand * 0.25 * sway(0.6, 4);
+    }
     this.camera.position.set(...pose.pos);
     this.camera.lookAt(...pose.target);
+    if (hand) this.camera.rotateZ(hand * 0.02 * Math.sin(this.show.state.time * 0.45));
     const vfov = (2 * Math.atan(Math.tan((pose.hfov * Math.PI) / 360) / this.camera.aspect) * 180) / Math.PI;
     if (Math.abs(vfov - this.camera.fov) > 0.01) {
       this.camera.fov = vfov;
       this.camera.updateProjectionMatrix();
     }
     this.camera.updateMatrixWorld();
+    if (this.handheld) {
+      this.handheld.uniforms.uTime.value = this.show.state.time;
+      this.handheld.uniforms.uAmount.value = hand;
+    }
     this.crowd.focus(this.camera.position);
     const scale = this.renderer.domElement.height / (2 * Math.tan((this.camera.fov * Math.PI) / 360));
     this.beams.update(this.camera, scale);
     this.sparks.setScale(scale);
     this.smoke.setScale(scale);
-    this.renderMirror(pose.pos, pose.target);
+    this.confetti?.setScale(scale);
+    this.renderMirror();
     if (this.composer) this.composer.render();
     else this.renderer.render(this.scene, this.camera);
   }
 
   /**
-   * Draws what the lake mirrors: the sky, the stage and the grounds as seen from the camera's own
-   * reflection under the water (the audience, the band and the beams are left out: they are costly
-   * and hardly show). The water then looks each of its points up in that picture.
+   * Draws what a level surface mirrors (a lake, a wet floor) as seen from the camera's own
+   * reflection under it (the audience, the band and the beams are left out: they are costly and
+   * hardly show). The surface then looks each of its points up in that picture.
    */
-  private renderMirror(pos: readonly number[], target: readonly number[]) {
+  private renderMirror() {
     const mirror = this.mirror;
     shared.uMirrorOn.value = mirror ? 1 : 0;
-    if (!mirror || !this.water) return;
-    const level = shared.uWaterLevel.value;
+    if (!mirror || !this.venue.mirror) return;
+    const level = this.venue.mirror.level;
+    shared.uWaterLevel.value = level;
     const cam = this.mirrorCamera;
-    cam.fov = this.camera.fov;
-    cam.aspect = this.camera.aspect;
-    cam.near = this.camera.near;
-    cam.far = this.camera.far;
+    const main = this.camera;
+    cam.fov = main.fov;
+    cam.aspect = main.aspect;
+    cam.near = main.near;
+    cam.far = main.far;
     cam.updateProjectionMatrix();
-    cam.position.set(pos[0], 2 * level - pos[1], pos[2]);
+    const pos = main.position;
+    const ahead = TMP_V.set(0, 0, -1).applyQuaternion(main.quaternion).add(pos);
+    cam.position.set(pos.x, 2 * level - pos.y, pos.z);
     cam.up.set(0, -1, 0);
-    cam.lookAt(target[0], 2 * level - target[1], target[2]);
+    cam.lookAt(ahead.x, 2 * level - ahead.y, ahead.z);
     cam.updateMatrixWorld();
     shared.uMirrorMatrix.value
       .set(0.5, 0, 0, 0.5, 0, 0.5, 0, 0.5, 0, 0, 0.5, 0.5, 0, 0, 0, 1)
       .multiply(cam.projectionMatrix)
       .multiply(cam.matrixWorldInverse);
-    const left = [this.water, this.crowd.group, this.band.group, this.beams.group].filter((o) => o.visible);
+    const left = [this.crowd.group, this.band.group, this.beams.group, ...(this.venue.mirror.hide ?? [])].filter((o) => o.visible);
     for (const o of left) o.visible = false;
     this.renderer.setRenderTarget(mirror);
     this.renderer.render(this.scene, cam);
@@ -518,6 +495,7 @@ export class AuroraStage {
       level: this.show.state.level,
       scale: this.dynScale,
       size: [this.renderer.domElement.width, this.renderer.domElement.height],
+      calls: this.renderer.info.render.calls,
     };
   }
 
@@ -532,8 +510,21 @@ export class AuroraStage {
     this.renderer.forceContextLoss();
   }
 
+  /**
+   * The shared uniforms that hold still for this stage: where the players stand, who is picked out,
+   * and the venue's own. Set every frame, since two stages (the menus' and a song's) can be up at
+   * once while one hands over to the other.
+   */
+  private bind() {
+    ['lead', 'vox', 'bass', 'drums'].forEach((key, i) => {
+      shared.uBand.value[i].set(...(this.venue.band[key] ?? [0, -100, 0]));
+      shared.uFeature.value[i] = !this.focus ? 0.6 : key === this.focus ? 1 : 0.4;
+    });
+    this.venue.bind();
+  }
+
   // ------------------------------------------------------------------ show → scene
-  private setLook(look: { key: Rgb; accent: Rgb; wash: Rgb }, k: number) {
+  private setLook(look: Look, k: number) {
     this.key.lerp(TMP_C.setRGB(...look.key), k);
     this.accent.lerp(TMP_C.setRGB(...look.accent), k);
     this.wash.lerp(TMP_C.setRGB(...look.wash), k);
@@ -542,9 +533,13 @@ export class AuroraStage {
   private applyShow(s: ShowState, bands: Readonly<BandLevels>, dt: number) {
     const t = s.time;
     const index = PALETTES.indexOf(s.palette);
+    const looks = this.looks;
     // Overdrive hands over a rainbow palette of its own: take its colours as they are.
     const ease = (rate: number) => Math.min(1, dt * rate);
-    this.setLook(index >= 0 ? LOOKS[index] : { key: s.palette.key, accent: LOOKS[0].accent, wash: s.palette.wash }, ease(1.1));
+    this.setLook(
+      index >= 0 ? looks[index % looks.length] : { key: s.palette.key, accent: looks[0].accent, wash: s.palette.wash },
+      ease(1.1),
+    );
     // Everything reaches the scene at full strength but never as a step: a beat swells to its peak
     // over a few frames and rings out, picking up from whatever was left of the one before; the
     // bass, middle and treble are followed closely on the way up and let go more slowly; and
@@ -556,7 +551,6 @@ export class AuroraStage {
     this.high += (bands.high - this.high) * ease(bands.high > this.high ? 20 : 6);
     const washLevel = 0.55 + 0.25 * this.low + 0.2 * this.barPulse + 0.2 * s.overdrive;
     shared.uTime.value = t;
-    shared.uCrowdMap.value = this.crowdMap;
     shared.uBeat.value = this.beatClock;
     shared.uPulse.value = this.pulse;
     shared.uBarPulse.value = this.barPulse;
@@ -568,82 +562,44 @@ export class AuroraStage {
     shared.uAccent.value.copy(this.accent);
     shared.uWash.value.copy(this.wash);
     shared.uScreenLevel.value = 0.62 + 0.16 * washLevel + 0.18 * this.barPulse;
+    shared.uFlash.value = 0;
     shared.uHazeNear.value
-      .setRGB(0.03, 0.035, 0.15)
+      .setRGB(...(this.venue.hazeNear ?? HAZE_NEAR))
       .lerp(this.wash, 0.14)
       .multiplyScalar(0.6 + 0.35 * s.beamLevel);
 
+    const frame = this.frame;
     for (let i = 0; i < this.beams.states.length; i++) {
       const b = this.beams.states[i];
       const group = this.beams.fixtures[i].group;
+      const own = this.venue.beam?.(group, i, frame);
       let level = s.beamLevel;
       let pan = 0;
       let tilt = 0;
-      switch (group) {
-        case 'Sky':
-          pan = Math.sin(t * 0.22 + i) * 0.16;
-          tilt = Math.sin(t * 0.17 + i * 1.7) * 0.1;
-          level *= i % 2 ? 0.7 : 0;
-          break;
-        case 'Ribbon':
-          // Glints along the ribbon: lenses without a beam worth the name.
-          level *= 0.12;
-          break;
-        case 'Truss':
-          level = 0.25 + 0.2 * this.barPulse + 0.12 * this.low;
-          break;
-        case 'Halo':
-          // The ring over the band: every head stays on its player and breathes with the bar.
-          tilt = Math.sin(t * 0.4 + i) * 0.012;
-          level = 0.25 + 0.16 * this.barPulse + 0.15 * s.beamLevel;
-          break;
-        case 'Delay':
-        case 'Foh':
-          level = 0.14;
-          break;
-        case 'Floor':
-          pan = Math.sin(t * 0.5 + i * 0.6) * 0.25;
-          level *= 0.35 + 0.4 * this.pulse;
-          break;
-        default:
-          if (s.beamMode === 'sweep') {
-            pan = Math.sin(t * 0.6 + i * 0.45) * 0.36;
-            tilt = Math.sin(t * 0.45 + i) * 0.14;
-          } else if (s.beamMode === 'fan') {
-            pan = (i % 2 ? 1 : -1) * (0.1 + 0.22 * Math.sin(t * 1.0)) * (1 + this.pulse * 0.4);
-            tilt = Math.cos(t * 0.8) * 0.08;
-          } else if (s.beamMode === 'chase') {
-            // A swell that travels along the row with the beat, not lamps switching on and off.
-            level *= (this.beats + i) % 4 === 0 ? 1 : 0.12;
-            pan = Math.sin(t * 0.4 + i) * 0.1;
-          } else {
-            tilt = Math.sin(t * 0.3 + i) * 0.04;
-          }
-          level *= 0.7 + 0.3 * this.pulse;
+      let color = i % 3 === 0 ? this.accent : this.key;
+      if (own) {
+        ({ pan, tilt, level } = own);
+        if (own.color) color = own.color === 'white' ? WHITE : own.color === 'accent' ? this.accent : this.key;
+      } else {
+        if (s.beamMode === 'sweep') {
+          pan = Math.sin(t * 0.6 + i * 0.45) * 0.36;
+          tilt = Math.sin(t * 0.45 + i) * 0.14;
+        } else if (s.beamMode === 'fan') {
+          pan = (i % 2 ? 1 : -1) * (0.1 + 0.22 * Math.sin(t * 1.0)) * (1 + this.pulse * 0.4);
+          tilt = Math.cos(t * 0.8) * 0.08;
+        } else if (s.beamMode === 'chase') {
+          // A swell that travels along the row with the beat, not lamps switching on and off.
+          level *= (this.beats + i) % 4 === 0 ? 1 : 0.12;
+          pan = Math.sin(t * 0.4 + i) * 0.1;
+        } else {
+          tilt = Math.sin(t * 0.3 + i) * 0.04;
+        }
+        level *= (0.7 + 0.3 * this.pulse) * (i % 2 ? 1 : 0.55);
       }
-      level *= i % 2 ? 1 : 0.55;
       b.pan += (pan - b.pan) * ease(4);
       b.tilt += (tilt - b.tilt) * ease(4);
       b.level += (level - b.level) * ease(level > b.level ? 16 : 5);
-      b.color.lerp(group === 'Sky' || i % 3 === 0 ? this.accent : this.key, ease(3));
-    }
-  }
-
-  /**
-   * Raises and lowers the podiums: higher as the music gets busier, the player whose part is being
-   * played above the rest, all the way up in overdrive, and each drifting a little on a cycle of
-   * its own so that none ever stands still. Lifts are slow: they glide.
-   */
-  private moveLifts(s: ShowState, dt: number) {
-    const busy = Math.min(1, Math.max(0, (this.energy - 0.2) / 0.55));
-    for (const l of this.lifts) {
-      const drift = 0.5 + 0.5 * Math.sin((this.beatClock / 16) * Math.PI * 2 + l.index * 1.9);
-      const featured = shared.uFeature.value[l.index] ?? 0.6;
-      const want = Math.max(s.overdrive, (0.1 + 0.6 * busy) * (0.5 + 0.5 * featured) + 0.3 * drift * (0.4 + 0.6 * busy));
-      l.height += (l.travel * Math.min(1, want) - l.height) * Math.min(1, dt * 0.9);
-      l.group.position.y = l.height;
-      if (l.person) this.band.setHeight(l.person, l.rest + l.height);
-      if (l.index >= 0) shared.uBand.value[l.index].y = l.rest + l.height;
+      b.color.lerp(color, ease(3));
     }
   }
 
@@ -651,17 +607,20 @@ export class AuroraStage {
   private fireworks(which: 'all' | 'center' | 'sides') {
     // The flame jets go off with them: the middle ones, the outer ones, or the lot. (Not while they
     // are held burning through the finale: a new shot would start each flame again from its foot.)
-    if (!this.flames?.holding)
-      this.flames?.fire(this.show.state.time, (i) => which === 'all' || (which === 'center') === (i >= 2 && i <= 4));
+    const jets = this.venue.flames?.length ?? 0;
+    const [from, to] = this.venue.flameMiddle ?? [Math.floor(jets * 0.3), Math.ceil(jets * 0.7) - 1];
+    const mid = (i: number) => i >= from && i <= to;
+    if (!this.flames?.holding) this.flames?.fire(this.show.state.time, (i) => which === 'all' || (which === 'center') === mid(i));
     const perRay = SPARKS_PER_RAY[this.g.effects];
     if (!perRay) return;
     const origin = new THREE.Vector3();
     const dir = new THREE.Vector3();
-    this.data.fireworks.forEach((f, index) => {
+    this.venue.fireworks.forEach((f, index) => {
       if (index === 0 || which === 'sides') shared.uBurst.value.set(f.origin[0], f.origin[1] + 14, f.origin[2], 1);
+      const side = f.side ?? Math.abs(f.origin[0]) >= 40;
       const x = Math.abs(f.origin[0]);
-      if (which === 'center' && x > 35) return;
-      if (which === 'sides' && x < 40) return;
+      if (which === 'center' && (f.side ?? x > 35)) return;
+      if (which === 'sides' && !side) return;
       origin.set(...f.origin);
       const c = (index % 2 ? this.accent : this.key).clone().lerp(WHITE, 0.45);
       this.sparks.spawn(origin, ZERO, [1, 0.95, 1], 4.5, 0.4, 0, 0, 0.6);
@@ -689,7 +648,7 @@ export class AuroraStage {
     const per = Math.round(strength * CO2_PER_JET[this.g.effects]);
     const origin = new THREE.Vector3();
     const tint = this.wash.clone().lerp(WHITE, 0.75);
-    for (const c of this.data.co2) {
+    for (const c of this.venue.co2) {
       origin.set(...c);
       for (let k = 0; k < per; k++) {
         TMP_V.set((Math.random() - 0.5) * 2.2, 9 + Math.random() * 7, (Math.random() - 0.5) * 2.2 + 0.8);
@@ -726,7 +685,14 @@ export class AuroraStage {
     const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: this.g.antialias ? 4 : 0 });
     const composer = new EffectComposer(this.renderer, target);
     composer.addPass(new RenderPass(this.scene, this.camera));
-    composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), 0.2, 0.45, 1.0));
+    if (this.g.glow) {
+      const [strength, radius, threshold] = this.venue.bloom ?? [0.2, 0.45, 1.0];
+      composer.addPass(new UnrealBloomPass(new THREE.Vector2(512, 512), strength, radius, threshold));
+    }
+    if (this.venue.handheld) {
+      this.handheld = new ShaderPass(HANDHELD_SHADER);
+      composer.addPass(this.handheld);
+    }
     composer.addPass(new OutputPass());
     this.composer = composer;
   }
@@ -743,3 +709,4 @@ const TMP_C = new THREE.Color();
 const TMP_V = new THREE.Vector3();
 const ZERO = new THREE.Vector3();
 const WHITE = new THREE.Color(1, 1, 1);
+const HAZE_NEAR: [number, number, number] = [0.03, 0.035, 0.15];

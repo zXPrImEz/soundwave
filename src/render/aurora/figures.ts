@@ -143,7 +143,7 @@ void main() {
   vec3 toGlow = uGlowPos - vWPos;
   float gd = length(toGlow);
   toGlow /= gd;
-  float stage = 1.0 / (1.0 + gd * gd * 0.0006);
+  float stage = 1.0 / (1.0 + gd * gd * uGlowFall);
   float wrap = max(0.0, dot(n, toGlow) * 0.6 + 0.4);
   vec3 stageCol = mix(uKey, vec3(1.0), 0.35) * uScreenLevel;
   // People standing shoulder to shoulder shade each other below the shoulders.
@@ -153,6 +153,8 @@ void main() {
   light += vec3(1.0, 0.52, 0.2) * uFire * stage * (0.45 + 0.55 * max(0.0, dot(n, toGlow)));
   // The pools of light drifting over the field fall on heads and shoulders.
   light += fieldPools(vWPos.xz) * (0.35 + 0.65 * max(0.0, n.y)) * 0.42 * (1.0 - min(1.0, vLook.y));
+  // The room's own lights and flashes (venues that have them).
+  light += roomLights(vWPos, n) * (0.4 + 0.6 * packed);
   // The band stands in the front spots.
   vec3 spotDir = normalize(vec3(0.25, 0.75, 0.6));
   light += vLook.y * vec3(1.0, 0.92, 0.86) * (max(0.0, dot(n, spotDir)) * 0.85 + 0.22);
@@ -426,7 +428,7 @@ function finish(mesh: THREE.InstancedMesh, count: number) {
 }
 
 /** Small deterministic generator, so the same crowd turns up every time. */
-function rng(seed: number) {
+export function rng(seed: number) {
   let s = seed >>> 0;
   return () => {
     s = (s + 0x6d2b79f5) >>> 0;
@@ -437,11 +439,11 @@ function rng(seed: number) {
   };
 }
 
-const BRIGHT = ['#ff3d9a', '#33d8ff', '#b6ff3d', '#ffffff', '#9a5cff', '#ff8a2a', '#ffd23d', '#2a6bff', '#ff4d4d'];
-const DARK = ['#101018', '#1c1c28', '#2a2a36', '#14203a'];
-const BOTTOMS = ['#10142a', '#1a2a55', '#15151a', '#2a3460', '#3a3a44', '#4a3a2a'];
-const CALM = ['dance', 'dance', 'clap', 'headbang'];
-const HYPE = ['cheer', 'cheer', 'fistpump', 'excited', 'excited', 'headbang'];
+export const BRIGHT = ['#ff3d9a', '#33d8ff', '#b6ff3d', '#ffffff', '#9a5cff', '#ff8a2a', '#ffd23d', '#2a6bff', '#ff4d4d'];
+export const DARK = ['#101018', '#1c1c28', '#2a2a36', '#14203a'];
+export const BOTTOMS = ['#10142a', '#1a2a55', '#15151a', '#2a3460', '#3a3a44', '#4a3a2a'];
+export const CALM = ['dance', 'dance', 'clap', 'headbang'];
+export const HYPE = ['cheer', 'cheer', 'fistpump', 'excited', 'excited', 'headbang'];
 /** People closer than this to a low camera are drawn with the detailed mesh, metres. */
 const NEAR_CAMERA = 12;
 
@@ -511,7 +513,11 @@ export function makeCrowd(
 }
 
 /** The band on its marks: guitar and bass turned in toward the singer, `focus` (a band key) lit a little more. */
-export function makeBand(data: VenueData, band: Record<string, { character: string; clip: string }>, focus?: string): Person[] {
+export function makeBand(
+  data: Pick<VenueData, 'band'>,
+  band: Record<string, { character: string; clip: string }>,
+  focus?: string,
+): Person[] {
   const turn: Record<string, number> = { lead: 0.42, bass: -0.42 };
   return Object.entries(band).flatMap(([part, who]) => {
     const pos = data.band[part];
