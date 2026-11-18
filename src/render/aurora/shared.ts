@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 
+/** How many of a venue's own lights the shaders take (see uLight). */
+export const LIGHTS = 8;
+
 /**
  * Uniforms every venue material shares: the clock, the music, the three colours of the light show,
  * the haze and where the stage's glow comes from. One object, so the show sets them once a frame.
@@ -59,6 +62,14 @@ export const shared = {
   /** The audience from above (see crowdMap.ts), and the ground it covers: corner x, z and 1 / size. */
   uCrowdMap: { value: null as THREE.Texture | null },
   uCrowdRect: { value: new THREE.Vector4(-136, -18, 1 / 272, 1 / 156) },
+  /**
+   * Lights a venue moves about the room (practicals, strobes, a mirror ball's glow): position and
+   * reach in metres, and colour times strength. Unused ones stay black.
+   */
+  uLight: { value: Array.from({ length: LIGHTS }, () => new THREE.Vector4(0, -1000, 0, 1)) },
+  uLightCol: { value: Array.from({ length: LIGHTS }, () => new THREE.Color(0, 0, 0)) },
+  /** A strobe or blinder flash over the whole room, 0..1. */
+  uFlash: { value: 0 },
 };
 
 /** Noise, haze and the screen content, shared by the fragment shaders. */
@@ -90,6 +101,9 @@ uniform vec3 uShore[8];
 uniform vec3 uShoreCol[8];
 uniform vec4 uBurst;
 uniform float uFire;
+uniform vec4 uLight[${LIGHTS}];
+uniform vec3 uLightCol[${LIGHTS}];
+uniform float uFlash;
 
 float hash11(float p) { p = fract(p * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
 float hash21(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
@@ -124,6 +138,18 @@ vec3 fieldPools(vec2 p) {
     sum += (mod(k, 2.0) < 0.5 ? uKey : uAccent) * smoothstep(15.0, 2.0, distance(p, c));
   }
   return sum * (0.3 + 0.7 * uEnergy);
+}
+
+/** What a venue's own lights (uLight) and a flash give a surface at p facing n, wrapped a little. */
+vec3 roomLights(vec3 p, vec3 n) {
+  vec3 sum = vec3(uFlash * 0.9);
+  for (int i = 0; i < ${LIGHTS}; i++) {
+    vec3 d = uLight[i].xyz - p;
+    float l = length(d);
+    float fall = 1.0 / (1.0 + l * l / (uLight[i].w * uLight[i].w));
+    sum += uLightCol[i] * fall * max(0.0, dot(n, d / max(l, 1e-3)) * 0.75 + 0.25);
+  }
+  return sum;
 }
 
 /** Distance and height haze that picks up the stage's light near it. */

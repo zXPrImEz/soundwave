@@ -12,6 +12,7 @@ import { GamepadInput, KeyboardInput, TouchInput, type InputHandlers } from './i
 import { WINDOWS } from './judge';
 import { GOLD_STARS, MAX_MULTIPLIER, multiplierFor, STREAK_PER_MULTIPLIER } from './scoring';
 import { highwaySpeed, type Settings } from './settings';
+import { resolveVenue, type VenueChoice, type VenueId } from '../render/venues/catalog';
 
 export interface HudRefs {
   score: HTMLElement;
@@ -41,6 +42,13 @@ export interface HudRefs {
 export type PlayPhase = 'countdown' | 'playing' | 'paused' | 'finished';
 
 const LEAD_IN = 3;
+
+/** The venue the last song played in at random: the next one goes somewhere else. */
+let lastRandom: VenueId | undefined;
+function pickVenue(choice: VenueChoice): VenueId {
+  if (choice !== 'random') return choice;
+  return (lastRandom = resolveVenue(choice, Math.random() * 1e4, lastRandom));
+}
 /** How long the stage celebrates after the last note before the result comes up, seconds. */
 export const FINALE_SECONDS = 4;
 
@@ -64,6 +72,9 @@ export class PlayController {
   private stageHost: HTMLElement | null = null;
   /** The graphics the newest stage was built with, as JSON. */
   private graphicsKey = '';
+  /** The venue as chosen in the settings, and the one this song is played in. */
+  private venueChoice: VenueChoice = 'moonrise';
+  private venue: VenueId;
   private readonly barLevels: number[];
   private readonly input: KeyboardInput;
   private readonly padInput: GamepadInput;
@@ -142,6 +153,8 @@ export class PlayController {
     this.meter.setAnalyser(engine.analyser);
     this.barLevels = barIntensity(chart);
     this.graphicsKey = JSON.stringify(resolveGraphics(settings.graphics));
+    this.venueChoice = settings.venue;
+    this.venue = pickVenue(settings.venue);
     if (stageHost) {
       // Built once the highway is ready to draw: both compile their shaders in the same GPU process,
       // and the highway, which the player needs first, should not queue behind the stage's.
@@ -300,7 +313,11 @@ export class PlayController {
     this.highway.speed = highwaySpeed(s.trackSpeed);
     this.rumble.update(s);
     const key = JSON.stringify(resolveGraphics(s.graphics));
-    if (key === this.graphicsKey) return;
+    if (key === this.graphicsKey && s.venue === this.venueChoice) return;
+    if (s.venue !== this.venueChoice) {
+      this.venueChoice = s.venue;
+      this.venue = pickVenue(s.venue);
+    }
     this.graphicsKey = key;
     if (this.stageHost) this.buildStage();
   }
@@ -313,7 +330,7 @@ export class PlayController {
   private buildStage() {
     const pending = this.stage !== this.shownStage ? this.stage : null;
     pending?.dispose();
-    const stage = new StageView(this.stageHost!, JSON.parse(this.graphicsKey), { mode: 'play', part: this.chart.part });
+    const stage = new StageView(this.stageHost!, JSON.parse(this.graphicsKey), { mode: 'play', part: this.chart.part, venue: this.venue });
     if (this.isFrozen) stage.setRate('frozen');
     this.stage = stage;
     stage.ready.then(

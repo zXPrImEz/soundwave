@@ -153,6 +153,8 @@ void main() {
   light += vec3(1.0, 0.52, 0.2) * uFire * stage * (0.45 + 0.55 * max(0.0, dot(n, toGlow)));
   // The pools of light drifting over the field fall on heads and shoulders.
   light += fieldPools(vWPos.xz) * (0.35 + 0.65 * max(0.0, n.y)) * 0.42 * (1.0 - min(1.0, vLook.y));
+  // The room's own lights and flashes (venues that have them).
+  light += roomLights(vWPos, n) * (0.4 + 0.6 * packed);
   // The band stands in the front spots.
   vec3 spotDir = normalize(vec3(0.25, 0.75, 0.6));
   light += vLook.y * vec3(1.0, 0.92, 0.86) * (max(0.0, dot(n, spotDir)) * 0.85 + 0.22);

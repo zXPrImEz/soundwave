@@ -1,10 +1,11 @@
 import { applyPreset, DEFAULT_GRAPHICS, type GraphicsPreset } from '../game/graphics';
-import { AuroraStage } from '../render/aurora/AuroraStage';
+import { Stage } from '../render/stage/Stage';
+import { isVenueChoice, resolveVenue } from '../render/venues/catalog';
 
 /**
  * Dev-only: the 3D stage full screen with a simulated song, for checking looks and performance
  * without playing. Open /#stage?preset=high&bpm=126&shot=hero&level=0.9&mode=play (shot pins one
- * camera, level pins how busy the music is, od = seconds until overdrive).
+ * camera, level pins how busy the music is, od = seconds until overdrive, venue = a venue's id).
  */
 export async function runStagePreview(root: HTMLElement) {
   const q = new URLSearchParams(location.hash.split('?')[1] ?? '');
@@ -15,10 +16,12 @@ export async function runStagePreview(root: HTMLElement) {
   // No fade-in here: a capture right after loading should show the stage, not the fade.
   canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:block;background:#000';
   root.replaceChildren(canvas);
-  const stage = await AuroraStage.create(canvas, g, { mode: q.get('mode') === 'menu' ? 'menu' : 'play', part: 'lead' });
+  const choice = q.get('venue');
+  const venue = resolveVenue(isVenueChoice(choice) ? choice : 'moonrise', Date.now());
+  const stage = await Stage.create(canvas, g, { mode: q.get('mode') === 'menu' ? 'menu' : 'play', part: 'lead', venue });
   const fit = () => stage.setSize(innerWidth, innerHeight, devicePixelRatio);
   fit();
-  (window as unknown as { __stage: AuroraStage }).__stage = stage;
+  (window as unknown as { __stage: Stage }).__stage = stage;
   const shot = q.get('shot');
   if (shot) {
     const d = stage.director as unknown as { shots: { name: string }[]; current: unknown; update: () => boolean };

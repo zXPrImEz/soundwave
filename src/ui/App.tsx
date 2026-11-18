@@ -60,6 +60,7 @@ import { LobbyScreen } from './LobbyScreen';
 import { watchStageLoading } from '../render/stage/StageView';
 import { bootDone, bootStep } from './boot';
 import { MenuBackground } from './MenuBackground';
+import { menuVenue } from '../render/venues/catalog';
 import { onBackdrop } from './windowDrag';
 import { InstallAppCard, UpdateCard } from './AppUpdates';
 import { checkForUpdates, updates } from '../app/updates';
@@ -965,7 +966,7 @@ export function App() {
     }
     content = (
       <div className={`menu on-${view.name}`}>
-        <MenuBackground graphics={settings.graphics} onReady={onStage} />
+        <MenuBackground graphics={settings.graphics} venue={menuVenue(settings.venue)} onReady={onStage} />
         <div className="veil" aria-hidden />
         {/* One entrance per screen change; the stage behind it stays. */}
         {booted && (

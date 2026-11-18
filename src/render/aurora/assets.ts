@@ -31,12 +31,17 @@ export interface FireworkSpec {
   spread: number;
   length: [number, number];
   lean: number;
+  /** Fired with the side salvos rather than the middle one (when not given: by how far out it stands). */
+  side?: boolean;
 }
 
 export interface Fixture {
   group: string;
   pos: Vec3;
   dir: Vec3;
+  /** Length of the beam and its spread (radius per metre); the group's own when not given. */
+  length?: number;
+  spread?: number;
 }
 
 export interface Clip {
@@ -99,61 +104,82 @@ export interface VenueAssets {
   crowd: FigureSet;
 }
 
-let cache: Promise<VenueAssets> | null = null;
+/** The band and the audience, which every venue shares. */
+export interface Cast {
+  band: FigureSet;
+  crowd: FigureSet;
+}
 
-/** How much of the venue has arrived (0..1), for the loading screen. */
-const PARTS = 5;
+/**
+ * How much of what is being loaded has arrived (0..1), for the loading screen. Parts are counted as
+ * they are asked for, so loading only the cast reports on the cast alone.
+ */
+let asked = 0;
 let arrived = 0;
 const watchers = new Set<(share: number) => void>();
-const tell = () => watchers.forEach((w) => w(arrived / PARTS));
+const tell = () => watchers.forEach((w) => w(asked ? arrived / asked : 0));
 /** Calls back with the share of the venue that has loaded, now and whenever more of it arrives. */
 export function watchVenue(cb: (share: number) => void): () => void {
   watchers.add(cb);
-  cb(arrived / PARTS);
+  cb(asked ? arrived / asked : 0);
   return () => void watchers.delete(cb);
 }
+function part<T>(p: Promise<T>): Promise<T> {
+  asked++;
+  return p.then((v) => {
+    arrived++;
+    tell();
+    return v;
+  });
+}
 
-/** Loads the venue once; later callers share the same promise. */
-export function loadVenue(): Promise<VenueAssets> {
-  if (cache) return cache;
-  const base = `${import.meta.env.BASE_URL}stage/aurora/`;
+const base = `${import.meta.env.BASE_URL}stage/aurora/`;
+let loader: GLTFLoader | null = null;
+function gltf(): GLTFLoader {
+  if (loader) return loader;
   const draco = new DRACOLoader().setDecoderPath(`${import.meta.env.BASE_URL}draco/`);
-  const loader = new GLTFLoader().setDRACOLoader(draco);
-  const get = async (name: string) => {
-    const r = await fetch(base + name);
-    if (!r.ok) throw new Error(`${name}: ${r.status}`);
-    return r;
-  };
-  const loadSet = async (path: string): Promise<FigureSet> => {
-    // The description first: a missing set fails here, before anything large is fetched.
-    const data = (await get(`${path}.json`).then((r) => r.json())) as FigureData;
-    const [gltf, anim] = await Promise.all([loader.loadAsync(`${base}${path}.glb`), get(`${path}.bin`).then((r) => r.arrayBuffer())]);
-    return { scene: gltf.scene, data, anim: new Uint16Array(anim) };
-  };
+  return (loader = new GLTFLoader().setDRACOLoader(draco));
+}
+async function get(name: string) {
+  const r = await fetch(base + name);
+  if (!r.ok) throw new Error(`${name}: ${r.status}`);
+  return r;
+}
+async function loadSet(path: string): Promise<FigureSet> {
+  // The description first: a missing set fails here, before anything large is fetched.
+  const data = (await get(`${path}.json`).then((r) => r.json())) as FigureData;
+  const [model, anim] = await Promise.all([gltf().loadAsync(`${base}${path}.glb`), get(`${path}.bin`).then((r) => r.arrayBuffer())]);
+  return { scene: model.scene, data, anim: new Uint16Array(anim) };
+}
+
+let castCache: Promise<Cast> | null = null;
+/** Loads the band and the audience once; later callers share the same promise. */
+export function loadCast(): Promise<Cast> {
+  if (castCache) return castCache;
   // Characters built on this machine from downloaded files (build_people.py, kept out of the
   // repository) take the place of the project's own cast when they are there.
   const people = (name: string): Promise<FigureSet> => loadSet(`local/${name}`).catch(() => loadSet(name));
+  castCache = Promise.all([part(people('band')), part(people('crowd'))]).then(([band, crowd]) => ({ band, crowd }));
+  castCache.catch(() => {
+    castCache = null;
+  });
+  return castCache;
+}
+
+let cache: Promise<VenueAssets> | null = null;
+/** Loads the Moonrise venue (and the cast) once; later callers share the same promise. */
+export function loadVenue(): Promise<VenueAssets> {
+  if (cache) return cache;
   const scenery = get('scenery.json')
     .then((r) => r.json() as Promise<SceneryData>)
-    .then(async (data) => ({ scene: (await loader.loadAsync(`${base}scenery.glb`)).scene, data }))
+    .then(async (data) => ({ scene: (await gltf().loadAsync(`${base}scenery.glb`)).scene, data }))
     .catch(() => null);
-  arrived = 0;
-  const part = <T>(p: Promise<T>): Promise<T> =>
-    p.then((v) => {
-      arrived++;
-      tell();
-      return v;
-    });
   cache = Promise.all([
-    part(loader.loadAsync(`${base}venue.glb`)),
+    part(gltf().loadAsync(`${base}venue.glb`)),
     part(get('venue.json').then((r) => r.json() as Promise<VenueData>)),
-    part(people('band')),
-    part(people('crowd')),
+    loadCast(),
     part(scenery),
-  ]).then(([venue, data, band, crowd, land]) => {
-    draco.dispose();
-    return { scene: venue.scene, data, band, crowd, scenery: land };
-  });
+  ]).then(([venue, data, cast, land]) => ({ scene: venue.scene, data, band: cast.band, crowd: cast.crowd, scenery: land }));
   cache.catch(() => {
     cache = null;
   });

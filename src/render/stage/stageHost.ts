@@ -1,6 +1,6 @@
 import { detectGpu } from '../../game/graphics';
-import { AuroraStage } from '../aurora/AuroraStage';
-import { loadVenue, watchVenue } from '../aurora/assets';
+import { loadCast, loadVenue, watchVenue } from '../aurora/assets';
+import { Stage } from './Stage';
 import type { Beat, FromStage, StageInput, StageRate, ToStage } from './protocol';
 
 /** How often a frozen stage still draws, ms (so a resized window is not left blank). */
@@ -11,7 +11,7 @@ const nextFrame: (cb: () => void) => unknown =
 
 /** One stage and what the page last told it. */
 interface Slot {
-  stage: AuroraStage | null;
+  stage: Stage | null;
   input: StageInput;
   /** A beat heard since the last frame (a downbeat outranks a beat). */
   beat: Beat | 'none';
@@ -75,9 +75,9 @@ export function createStageHost(post: (m: FromStage) => void) {
       disposed: false,
     };
     slots.set(m.id, slot);
-    let stage: AuroraStage;
+    let stage: Stage;
     try {
-      stage = await AuroraStage.create(m.canvas, m.graphics, m.options);
+      stage = await Stage.create(m.canvas, m.graphics, m.options);
     } catch (err) {
       slots.delete(m.id);
       const message = err instanceof Error ? err.message : String(err);
@@ -101,7 +101,7 @@ export function createStageHost(post: (m: FromStage) => void) {
       case 'preload':
         // The page picks the Auto graphics tier by the GPU's name: found here, off the page.
         post({ type: 'gpu', name: detectGpu() });
-        loadVenue().catch(() => undefined);
+        (m.venue === 'moonrise' ? loadVenue() : loadCast()).catch(() => undefined);
         return;
       case 'visible':
         visible = m.visible;
