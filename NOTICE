@@ -20,3 +20,8 @@ The audio in public/audio was composed for this project and rendered by tools/au
 instrument samples of the Versilian Studios Chamber Orchestra 2 Community Edition (CC0)
 and, for the crowd, a public-domain recording ("Festival concert people crowd",
 Wikimedia Commons). Neither source is redistributed here.
+
+The surface textures in public/stage/textures are made by
+tools/stage/textures/build_textures.py from scanned materials by ambientCG
+(ambientcg.com), dedicated to the public domain under CC0 1.0; docs/THIRD_PARTY.md
+lists each one.
