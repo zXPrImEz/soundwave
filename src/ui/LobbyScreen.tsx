@@ -16,6 +16,7 @@ import { HoldButton } from './HoldButton';
 import { DIFFICULTY_LABEL, ICON_STROKE, PART_ICON, PART_LABEL, Pips, Stars } from './icons';
 import { useSlide } from './useSlide';
 import { keysOf } from '../input/bindings';
+import { VENUES, type VenueChoice } from '../render/venues/catalog';
 
 interface Props {
   songs: SongMeta[];
@@ -25,6 +26,8 @@ interface Props {
   scores: BestScore[];
   settings: Settings;
   onPick(pick: Pick): void;
+  /** The venue the set is played in (a setting, chosen here too). */
+  onVenue(venue: VenueChoice): void;
   onStart(): void;
   onBack(): void;
 }
@@ -32,11 +35,17 @@ interface Props {
 /** Per song, its notes on each part at the chosen difficulty, as they are counted. */
 type Counts = Record<string, Partial<Record<Part, number>> | undefined>;
 
+/** The venues to choose from, and a different one for every song. */
+const VENUE_CHOICES: { id: VenueChoice; name: string; blurb: string }[] = [
+  ...VENUES,
+  { id: 'random', name: 'Random', blurb: 'A different venue for every song' },
+];
+
 /** What a song has almost none of, in a sentence. */
 const PART_STUFF: Record<Part, string> = { vocals: 'vocals', lead: 'lead instrument', bass: 'bass', drums: 'drums' };
 
 /** Ready up: the set in order, the part and difficulty to play it on, and the button that starts it. */
-export function LobbyScreen({ songs, pick, thin, scores, settings, onPick, onStart, onBack }: Props) {
+export function LobbyScreen({ songs, pick, thin, scores, settings, onPick, onVenue, onStart, onBack }: Props) {
   const hints = useHints(settings);
   const [counts, setCounts] = useState<Counts>({});
   // The parts each song has: those it does not hardly have, less any without a note at this
@@ -117,6 +126,8 @@ export function LobbyScreen({ songs, pick, thin, scores, settings, onPick, onSta
   const pad = hints.mode === 'pad';
   const partRow = useSlide<HTMLDivElement>(part);
   const diffRow = useSlide<HTMLDivElement>(pick.difficulty);
+  const venueRow = useSlide<HTMLDivElement>(settings.venue);
+  const venue = VENUE_CHOICES.find((v) => v.id === settings.venue) ?? VENUE_CHOICES[0];
   const lanes = lanesFor(pick.difficulty);
   const known = songs.every((s) => counts[s.id] !== undefined);
   const notesOf = (s: SongMeta) => {
@@ -181,7 +192,7 @@ export function LobbyScreen({ songs, pick, thin, scores, settings, onPick, onSta
           })}
         </ol>
 
-        <section className="ready-panel" data-nav-group="ready" aria-label="Part and difficulty">
+        <section className="ready-panel" data-nav-group="ready" aria-label="Part, difficulty and venue">
           <h2 className="label" id="part-label">
             Part
           </h2>
@@ -262,6 +273,32 @@ export function LobbyScreen({ songs, pick, thin, scores, settings, onPick, onSta
           <p className="lane-info">
             <span>{lanes} lanes</span>
             {hints.mode === 'touch' && <span className="dim">Tap the lanes to play</span>}
+          </p>
+
+          <h2 className="label" id="venue-label">
+            Venue
+          </h2>
+          <div className="venue-row slide" ref={venueRow} role="radiogroup" aria-labelledby="venue-label" aria-describedby="venue-blurb">
+            <span className="sel" aria-hidden />
+            {VENUE_CHOICES.map((v) => {
+              const on = settings.venue === v.id;
+              return (
+                <button
+                  key={v.id}
+                  type="button"
+                  className={`choice venue ${on ? 'on' : ''}`}
+                  data-on={on}
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => onVenue(v.id)}
+                >
+                  <span>{v.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="venue-blurb dim" id="venue-blurb">
+            {venue.blurb}
           </p>
 
           <HoldButton

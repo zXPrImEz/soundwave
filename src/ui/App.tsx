@@ -901,6 +901,7 @@ export function App() {
           scores={scores}
           settings={settings}
           onPick={setPick}
+          onVenue={(venue) => updateSettings({ ...settings, venue })}
           onStart={() => void start(view)}
           onBack={() => (view.from === 'library' ? setView({ name: 'library' }) : goHome())}
         />

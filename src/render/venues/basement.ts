@@ -8,6 +8,7 @@ import { Builder, disposeTree } from './kit/build';
 import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { bandShots, shot } from './kit/shots';
+import { StrobeGate } from './kit/strobe';
 import { glow, surface } from './kit/surface';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 
@@ -149,6 +150,7 @@ export function buildBasement(ctx: VenueContext): Venue {
   const corners = [new THREE.Vector3(-HALF + 0.3, HEIGHT - 0.3, -HALF + 0.3), new THREE.Vector3(HALF - 0.3, HEIGHT - 0.3, -HALF + 0.3)];
   let strobe = 0;
   let lastSub = -1;
+  const gate = new StrobeGate();
 
   const bind = () => {
     shared.uGlowPos.value.set(0, 1.4, -HALF + 0.5);
@@ -167,12 +169,13 @@ export function buildBasement(ctx: VenueContext): Venue {
     const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
     const peak = s.level === 'peak' || s.overdrive > 0.5;
     // The tubes: steady red, pumping with the kick, flicking to white on the strobe.
-    const sub = Math.floor(f.clock * 4);
+    // The strobe catches some of the beats in a peak, never more often than the gate allows.
+    const sub = Math.floor(f.clock * 2);
     if (sub !== lastSub) {
       lastSub = sub;
-      if (peak && !menu && Math.random() < 0.35 + 0.3 * s.overdrive) strobe = 1;
+      if (peak && !menu && Math.random() < 0.45 + 0.3 * s.overdrive && gate.fire(f.time)) strobe = 1;
     }
-    strobe = Math.max(strobe * Math.exp(-f.dt * 30), s.blinder);
+    strobe *= Math.exp(-f.dt * 30);
     tubeSpots.forEach((_, i) => {
       const k = 1.2 + 1.6 * f.pulse * (0.4 + 0.6 * busy) * ((i + f.beats) % 3 === 0 ? 1 : 0.5);
       tubes.setColorAt(

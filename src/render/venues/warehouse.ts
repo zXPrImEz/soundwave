@@ -9,6 +9,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { bandShots, shot } from './kit/shots';
+import { StrobeGate } from './kit/strobe';
 import { glow, surface } from './kit/surface';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 
@@ -228,6 +229,7 @@ export function buildWarehouse(ctx: VenueContext): Venue {
   const amber = new THREE.Color(1, 0.55, 0.18);
   const color = new THREE.Color();
   let lastSub = -1;
+  const gate = new StrobeGate();
   let flash = 0;
   let laserLook = 0;
   const tmpA = new THREE.Vector3();
@@ -300,16 +302,19 @@ export function buildWarehouse(ctx: VenueContext): Venue {
     bars.instanceColor!.needsUpdate = true;
     cables.instanceMatrix.needsUpdate = true;
 
-    // Strobes: in a peak they fire in sixteenths, a few at a time, plus the blinder on the bar.
-    const sub = Math.floor(f.clock * 4);
+    // Strobes: in a peak a few of them go off on the off-beats and all of them on the bar, never
+    // more often than the gate allows.
+    const sub = Math.floor(f.clock * 2);
     if (sub !== lastSub) {
       lastSub = sub;
-      if (peak && !menu && busy > 0.4)
-        for (let k = 0; k < strobeCount; k++) if (Math.random() < 0.18 + 0.2 * s.overdrive) strobeLevel[k] = 1;
+      const all = f.beat === 'downbeat' || sub % 4 === 0;
+      if (peak && !menu && busy > 0.4 && gate.fire(f.time))
+        for (let k = 0; k < strobeCount; k++)
+          if (all || Math.random() < 0.3 + 0.2 * s.overdrive) strobeLevel[k] = all ? (k % 2 ? 1 : 0.5) : 1;
     }
     let sum = 0;
     for (let k = 0; k < strobeCount; k++) {
-      strobeLevel[k] = Math.max(strobeLevel[k] * Math.exp(-f.dt * 38), s.blinder * (k % 2 ? 0.8 : 0.3));
+      strobeLevel[k] *= Math.exp(-f.dt * 38);
       strobes.setColorAt(k, color.setScalar(0.08 + strobeLevel[k] * 9));
       sum += strobeLevel[k];
     }
