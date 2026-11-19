@@ -2,11 +2,12 @@
 Monolith: a brutalist open-air stage on the shore of a lake (see build.py).
 
 Four freestanding concrete portals stand in a row across the stage, each two square piers one
-behind the other under a lintel slab that cantilevers to the front and the back. One band of LEDs
-runs through all four, between the piers, ending flush with the outer ones, with a service truss and a catwalk behind it. The deck
-lies before the portals: the band plays at its front, the DJ on a riser under the LED band. Behind
-the stage a tiered guest terrace stands on stilts over the water, reached by gangways from both
-sides; pontoons with lighting towers and a row of buoys float beyond it, and a dark treeline closes
+behind the other under a lintel slab of the same width and length: one clean block, nothing
+reaching past it. One long block of LEDs runs through all four between the piers, lit on every
+face and ending flush with the outer portals. The deck lies before the portals: the band plays at
+its front, the DJ on a riser under the block of light. Behind the stage a tiered guest terrace
+stands on stilts over the water, reached by gangways from both sides; pontoons with fireworks and a
+row of buoys float beyond it, and a dark treeline closes
 the far shore. The crowd stands on the field in front, with the mixing desk, two delay towers,
 stalls at the far sides and flags along the back.
 """
@@ -28,10 +29,11 @@ PIER, PIER_TOP = 3.0, 17.0
 PZ = -17.0                                  # the middle of a portal, front to back
 GAP = 2.4                                   # clear between a portal's two piers
 PIER_Z = (PZ + GAP / 2 + PIER / 2, PZ - GAP / 2 - PIER / 2)   # front pier, back pier
-LINTEL_W, LINTEL_Z0, LINTEL_Z1 = 4.2, -11.2, -22.8
-LINTEL_Y, LINTEL_BACK, LINTEL_FRONT = PIER_TOP + 0.02, 18.8, 19.05
+LINTEL_W, LINTEL_Z0, LINTEL_Z1 = PIER, PIER_Z[0] + PIER / 2, PIER_Z[1] - PIER / 2   # flush with the piers
+LINTEL_Y, LINTEL_BACK, LINTEL_FRONT = PIER_TOP + 0.02, 19.0, 19.0
 DECK_FRONT, DECK_BACK, DECK_HALF, DECK = -10.0, -23.0, 35.0, 2.4
-BAND_Y, BAND_H, BAND_LEN, BAND_Z = 11.0, 4.0, (PORTALS[-1] + PIER / 2) * 2, -16.2
+BAND_Y, BAND_H, BAND_LEN, BAND_Z = 11.0, 4.0, (PORTALS[-1] + PIER / 2) * 2, PZ
+BAND_D = GAP - 0.1                          # the block fills the gap between the piers
 DJ_Z, DJ_RISE = -16.0, 1.0
 WATER = -0.4
 T_X, T_Z0, T_DEPTH, T_STEPS, T_Y0, T_RISE = 30.0, -26.0, 2.4, 5, 3.0, 0.8
@@ -180,7 +182,7 @@ def portal(k, px):
                 for y in (LINTEL_Y + 0.5, LINTEL_Y + 1.3):
                     dot(k, 'Joint', (px + side * (LINTEL_W / 2 + 0.002), y, z), (side, 0, 0), 0.035)
     for z, nz in ((LINTEL_Z0, 1), (LINTEL_Z1, -1)):
-        for t in (-1.5, -0.5, 0.5, 1.5):
+        for t in (-1.1, -0.35, 0.35, 1.1):
             for y in (LINTEL_Y + 0.5, LINTEL_Y + 1.3):
                 dot(k, 'Joint', (px + t, y, z + nz * 0.002), (0, 0, nz), 0.035)
         k.box('Joint', (0.025, 1.6, 0.006), (px, LINTEL_Y + 0.9, z + nz * 0.002))
@@ -190,18 +192,15 @@ def portal(k, px):
     for z in (LINTEL_Z0 - 0.15, LINTEL_Z1 + 0.15):
         k.box('Joint', (LINTEL_W - 0.3, 0.008, 0.03), (px, LINTEL_Y - 0.002, z))
 
-    # Under the front cantilever: a row of strobes let into the soffit, the moving heads before them.
+    # Strobes let into the soffit over the gap, flashing down past the block of light; heads let into
+    # the lintel's front face rake the crowd. Nothing hangs off the concrete.
     for i in range(8):
-        x = px - 1.75 + i * 0.5
-        k.box('Black', (0.47, 0.14, 0.36), (x, LINTEL_Y - 0.07, -12.3), bevel=0.012)
-        k.instance('strobe', (x, LINTEL_Y - 0.14, -12.3))
-    k.box('Steel', (LINTEL_W - 0.3, 0.05, 0.1), (px, LINTEL_Y - 0.025, -11.6))
+        k.instance('strobe', (px - 1.05 + (i % 4) * 0.7, LINTEL_Y, PZ + (0.6 if i < 4 else -0.6)))
     for i in range(6):
-        x = px - 1.75 + i * 0.7
-        k.moving_head((x, LINTEL_Y - 0.355, -11.6), ((x - px) * 0.03, -0.72, 0.69), 'Lintel', 50, 0.03)
-    # A row of small lamps along the front's lower edge.
-    k.box('Dark', (LINTEL_W - 0.1, 0.05, 0.03), (px, LINTEL_Y + 0.14, LINTEL_Z0 + 0.015))
-    bulbs(k, (x0 + 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.09), (x1 - 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.09), 0.15)
+        x = px - 1.25 + i * 0.5
+        k.moving_head((x, LINTEL_Y + 0.5, LINTEL_Z0), ((x - px) * 0.03, -0.72, 0.69), 'Lintel', 50, 0.03, body=False)
+    # A row of small lamps set into the front face, along its lower edge.
+    bulbs(k, (x0 + 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.02), (x1 - 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.02), 0.15)
     # On top nothing stands out of the slab: two beams into the sky from heads let into it, and the
     # fireworks leave from its top.
     for z, lean in ((-12.6, 0.12), (-21.4, -0.12)):
@@ -251,60 +250,32 @@ def portal(k, px):
 
 
 def band(k):
-    """The LED band through the portals, and behind it the service truss and the catwalk."""
-    half = BAND_LEN / 2
-    k.own('LED_band', 'LED.band', lambda b: k.panel('LED.band', BAND_LEN, BAND_H, (0, BAND_Y, BAND_Z), b=b))
+    """The block of light: one long box of LEDs through the portals, between their piers, flush
+    with the outer ones, lit on every face. Heads and lasers are let into its edges."""
+    half, d = BAND_LEN / 2, BAND_D
+    y0, y1, z0, z1 = BAND_Y - BAND_H / 2, BAND_Y + BAND_H / 2, BAND_Z - d / 2, BAND_Z + d / 2
+
+    # The long faces are the screen; the top, the underside and the ends a screen of their own, which
+    # the game runs dimmer so the block reads as a solid.
+    def faces(b):
+        k.panel('LED.band', BAND_LEN, BAND_H, (0, BAND_Y, z1), b=b)
+        k.panel('LED.band', BAND_LEN, BAND_H, (0, BAND_Y, z0), math.pi, b=b)
+
+    def edges(b):
+        k.panel('LED.edge', BAND_LEN, d, (0, y1, BAND_Z), 0, -math.pi / 2, b=b)
+        k.panel('LED.edge', BAND_LEN, d, (0, y0, BAND_Z), 0, math.pi / 2, b=b)
+        for side in (-1, 1):
+            k.panel('LED.edge', d, BAND_H, (side * half, BAND_Y, BAND_Z), side * math.pi / 2, b=b)
+
+    k.own('LED_band', 'LED.band', faces)
+    k.own('LED_bandedge', 'LED.edge', edges)
     k.data['screens']['band'] = {'w': BAND_LEN, 'h': BAND_H}
-    k.box('Black', (BAND_LEN + 0.24, BAND_H + 0.24, 0.3), (0, BAND_Y, BAND_Z - 0.17))
-    for y in (BAND_Y - BAND_H / 2 - 0.1, BAND_Y + BAND_H / 2 + 0.1):
-        k.box('Alu', (BAND_LEN + 0.26, 0.04, 0.34), (0, y, BAND_Z - 0.16))
-    tz, lo, hi = BAND_Z - 0.75, 8.6, 14.2
-    for y in (lo, hi):
-        k.truss('Black', (-half, y, tz), (half, y, tz), 0.5)
-    x = -half
-    while x <= half + 1e-3:
-        if all(abs(abs(x) - p) > PIER / 2 + 0.2 for p in (10, 30)):
-            for dz in (-0.25, 0.25):
-                k.rod('Black', (x, lo, tz + dz), (x, hi, tz + dz), 0.03, 6)
-            for y in (9.4, 11.0, 12.6):
-                k.box('Black', (0.08, 0.08, 0.5), (x, y, BAND_Z - 0.5))
-            k.rod('Black', (x, hi - 0.25, tz - 0.25), (x, 8.36, BAND_Z - 1.85), 0.012, 4)
-        x += half / 8
-    # The catwalk: a grating on outriggers, a rail on its back, work lamps along it.
-    cz = BAND_Z - 1.45
-    k.box('Steel', (BAND_LEN, 0.05, 0.85), (0, 8.33, cz))
-    for dz in (-0.42, 0.42):
-        k.box('Steel', (BAND_LEN, 0.14, 0.05), (0, 8.26, cz + dz))
-    x = -half
-    while x <= half + 1e-3:
-        k.box('Steel', (0.06, 0.1, 1.5), (x, 8.24, cz + 0.3))
-        x += half / 16
-    steel_rail(k, (-half, 8.36, cz - 0.4), (half, 8.36, cz - 0.4), 1.1, 2.375)
-    for x in (-26, -20, 20, 26):
-        k.box('Dark', (0.3, 0.08, 0.12), (x, 9.5, cz - 0.4))
-        k.box('Glow.Lamp', (0.24, 0.015, 0.08), (x, 9.455, cz - 0.4))
-    # A ladder down to the deck at each end, and a mast under each end of the truss.
-    for side in (-1, 1):
-        x = side * (half - 0.3)
-        k.truss('Black', (x, 0, tz), (x, lo - 0.25, tz), 0.5)
-        k.box('Steel', (1.1, 0.06, 1.1), (x, 0.03, tz), bevel=0.01)
-        for bx in (-0.45, 0.45):
-            for bz in (-0.45, 0.45):
-                bolt(k, (x + bx, 0.06, tz + bz))
-        lx = side * (half - 1.2)
-        for dx in (-0.22, 0.22):
-            k.rod('Alu', (lx + dx, DECK, cz + 0.55), (lx + dx, 9.4, cz + 0.55), 0.02, 6)
-        y = DECK + 0.3
-        while y < 8.3:
-            k.rod('Alu', (lx - 0.22, y, cz + 0.55), (lx + 0.22, y, cz + 0.55), 0.012, 5)
-            y += 0.3
-    # Heads over the band's top edge, through the haze toward the crowd; laser heads under it.
+    k.data['screens']['bandedge'] = {'w': BAND_LEN, 'h': d}
+    # Heads along the top front edge, through the haze toward the crowd; laser heads along the bottom one.
     for x in (-26, -22, -18, -14, -6, -2.5, 2.5, 6, 14, 18, 22, 26):
-        k.moving_head((x, hi - 0.555, tz), (x * 0.02, -0.08, 1), 'Back', 70, 0.02)
+        k.moving_head((x, y1, z1), (x * 0.02, -0.08, 1), 'Back', 70, 0.02, body=False)
     for x in (-24, -16, -5, 5, 16, 24):
-        k.box('Dark', (0.4, 0.22, 0.34), (x, lo + 0.05, BAND_Z - 0.2), bevel=0.02)
-        k.box('Glow.Green', (0.12, 0.05, 0.01), (x, lo + 0.05, BAND_Z - 0.025))
-        k.source('laser.band', (x, lo + 0.05, BAND_Z))
+        k.source('laser.band', (x, y0 - 0.05, z1))
 
 
 def deck(k):

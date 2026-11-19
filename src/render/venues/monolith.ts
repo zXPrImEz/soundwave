@@ -26,9 +26,8 @@ interface MonolithData extends ModelData {
 
 /**
  * Monolith: four concrete gates on a lake shore and one bar of light through them all, modelled in
- * Blender (tools/stage/venues/monolith.py). The show is as spare as the architecture: the band of
- * LEDs breathes and sweeps, uplights climb the piers, rows of heads under the lintels rake the
- * field, strobes fire from the soffits, lamps trace every edge, and the lake mirrors it all. The
+ * Blender (tools/stage/venues/monolith.py). The show is as spare as the architecture: the block of
+ * LEDs breathes and sweeps, uplights climb the piers, heads let into the lintels rake the field, strobes fire from the soffits, lamps trace every edge, and the lake mirrors it all. The
  * band plays at the front of the deck, the DJ under the bar of light; guests stand on the terrace
  * behind them, over the water.
  */
@@ -100,9 +99,11 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
   const band = new LedScreen([316, 20], ['solid', 'stripes', 'solid', 'bars', 'solid', 'rings'], 2.2, 11);
   const fascia = new LedScreen([520, 10], ['stripes', 'solid', 'bars'], 1.5, 12);
   const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 2, 13);
-  const screens = { band, fascia, booth };
+  // The block's top, underside and ends: the same pictures, dimmer, so it reads as a solid.
+  const bandedge = new LedScreen([316, 12], ['solid', 'stripes', 'solid', 'bars', 'solid', 'rings'], 2.2, 11);
+  const screens = { band, bandedge, fascia, booth };
   for (const [key, scr] of Object.entries(screens)) for (const mesh of dressed.screens.get(key) ?? []) mesh.material = scr.material;
-  owned.push(band, fascia, booth);
+  owned.push(band, bandedge, fascia, booth);
 
   const strobes = instances(dressed.protos.get('strobe')!, data.instances.strobe ?? [], strobeGlow);
   const strobeLevel = new Float32Array(strobes.count);
@@ -202,11 +203,15 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     const peak = s.level === 'peak' || s.overdrive > 0.5;
     dusk.value = menu ? 0.75 : Math.min(1, 0.45 + f.time / 160);
     if (f.beat === 'downbeat') {
-      if (s.bar % 8 === 0) band.next(s.bar / 8);
+      if (s.bar % 8 === 0) {
+        band.next(s.bar / 8);
+        bandedge.next(s.bar / 8);
+      }
       if (s.bar % 4 === 2) fascia.next(s.bar / 4);
       if (s.bar % 4 === 0) booth.next(s.bar / 4);
     }
     band.level = 1.25 + 0.7 * f.barPulse + 0.5 * busy + 0.6 * s.overdrive;
+    bandedge.level = band.level * 0.35;
     for (const scr of Object.values(screens)) scr.update(f.dt);
     bulbs.update(f, 1.2);
     gear.jog.uniforms.uLevel.value = 1.4 + 2 * f.pulse;
