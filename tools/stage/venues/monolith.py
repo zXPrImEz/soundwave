@@ -332,33 +332,22 @@ def deck(k):
     k.dj_booth((0, top, DJ_Z), 0, 3.6, 'booth')
     k.mark('dj', (0, top, DJ_Z - 0.75))
 
-    # The band at the front: singer in the middle, guitar and bass either side with their amps,
-    # drums on a riser behind the guitar, wedges along the front.
-    for name, at in {'vox': (0, DECK, -11.2), 'lead': (-4.2, DECK, -11.8), 'bass': (4.2, DECK, -11.8), 'drums': (-5.4, DECK + 0.5, -14.5)}.items():
-        k.mark(name, at)
-    k.box('Black', (3.2, 0.5, 2.8), (-5.4, DECK + 0.25, -14.4), bevel=0.015)
-    k.floor('Rubber', 2.9, 2.5, (-5.4, DECK + 0.506, -14.4))
-    k.box('Alu', (3.2, 0.03, 0.03), (-5.4, DECK + 0.5, -12.99))
+    # The band at the front, each player on a podium the game lifts with the music: singer in the
+    # middle, guitar and bass either side with their amps, drums behind the guitar.
+    k.podium('vox', (0, DECK, -11.7), 1.3, 1.3, 0.35, 1.4, wedge=True)
+    for side, part in ((-1, 'lead'), (1, 'bass')):
+        k.podium(part, (side * 4.0, DECK, -12.0), 1.15, 1.15, 0.35, 1.1, pedals=True)
+    k.podium('drums', (-5.4, DECK, -14.5), 1.6, 1.35, 0.5, 0.7, mic=False)
     for side in (-1, 1):
         k.amp((side * 6.7, DECK, -12.68), side * -0.1)
         k.amp((side * 7.6, DECK, -12.66), side * -0.18, 1)
-        k.tube('Rubber', [(side * 4.2, DECK + 0.02, -11.6), (side * 5.6, DECK + 0.02, -11.9), (side * 6.7, DECK + 0.02, -12.4)], 0.012, 5)
-        k.mic_stand((side * 4.9, DECK, -11.15), -0.12)
-        k.box('Dark', (0.12, 0.05, 0.05), (side * 4.9, DECK + 1.47, -11.3))
-        # A pedal board at the player's feet.
-        k.box('Dark', (0.7, 0.04, 0.32), (side * 4.2, DECK + 0.02, -11.0), 0, 0.08)
-        for i in range(4):
-            k.box(('Glow.Red', 'Glow.Green', 'Glow.Amber', 'Alu')[i], (0.09, 0.03, 0.13), (side * 4.2 - 0.24 + i * 0.16, DECK + 0.055, -11.0))
-    for x in (-4.2, -0.6, 0.6, 4.2):
-        k.wedge((x, DECK, DECK_FRONT - 0.75), 0)
-    k.mic_stand((0, DECK, -10.85), -0.15)
-    k.box('Dark', (0.05, 0.05, 0.16), (0, DECK + 1.47, -10.95))
-    for x in (-4.2, 0, 4.2):
-        k.tube('Rubber', [(x, DECK + 0.02, -10.9), (x * 0.9 + 1.2, DECK + 0.02, -12.6), (x * 0.5 + 3.4, DECK + 0.02, -13.6), (3.6, DECK + 0.02, -18.4)], 0.015, 5)
+        k.tube('Rubber', [(side * 5.0, DECK + 0.02, -11.6), (side * 5.6, DECK + 0.02, -11.9), (side * 6.7, DECK + 0.02, -12.4)], 0.012, 5)
+    for x, z in ((-2.4, -13.2), (1.2, -13.5), (4.8, -13.2)):
+        k.tube('Rubber', [(x, DECK + 0.02, z), (x * 0.4 + 3.2, DECK + 0.02, -13.7), (3.6, DECK + 0.02, -18.4)], 0.015, 5)
     # A stage box and the set lists taped to the deck.
     k.box('Dark', (0.5, 0.14, 0.34), (3.6, DECK + 0.07, -18.5), bevel=0.01)
-    for x in (-4.2, 0.35, 4.2):
-        k.box('Canvas', (0.21, 0.004, 0.3), (x + 0.5, DECK + 0.008, -10.95), 0.2)
+    for x in (-2.2, 2.2):
+        k.box('Canvas', (0.21, 0.004, 0.3), (x, DECK + 0.008, -10.6), 0.2)
 
     # Along the front edge: flame jets, cold sparks, CO2 jets and low fog machines.
     for i in range(10):

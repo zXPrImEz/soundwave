@@ -144,13 +144,6 @@ def combo(k, at, yaw, size=1.0):
             k.drum('Rubber', 0.02, 0.02, p(x * (w / 2 - 0.05), 0, z * (d / 2 - 0.04)), 6)
 
 
-def mic(k, at, lean):
-    k.mic_stand(at, lean)
-    top = (at[0], at[1] + 1.45, at[2] + lean)
-    k.rod('Dark', top, (top[0], top[1] + 0.05, top[2] - 0.12 * (1 if lean < 0 else -1)), 0.016, 6, cap=True)
-    k.sphere('Alu', 0.026, (top[0], top[1] + 0.06, top[2] - 0.14 * (1 if lean < 0 else -1)), 8, 6)
-
-
 def build(k):
     for name, colour in PREVIEW.items():
         K.mat(name).diffuse_color = (*colour, 1)
@@ -515,14 +508,11 @@ def build(k):
     tube(k, 'Black', [(4.3, 1.61, BACK + 0.09), (4.4, 1.4, BACK + 0.07), (4.4, 1.3, BACK + 0.07)], 0.008, 5)
 
     # ------------------------------------------------------------- the band, on the floor
-    band = {'vox': (0, 0, 2.6), 'lead': (-2.8, 0, 2.0), 'bass': (2.8, 0, 2.0), 'drums': (-4.2, PLAT, -0.6)}
-    for name, at in band.items():
-        k.mark(name, at)
-    # The drum riser with its rug.
-    box(k, 'Black', (2.3, PLAT, 2.2), (-4.25, PLAT / 2 - 0.004, -0.5), 0, 0, 0.015)
-    k.grid('Cloth', 2.1, 2.0, 6, 6, (-4.25, PLAT + 0.002, -0.5), 0, -math.pi / 2)
-    for z in (-1.6, 0.6):
-        box(k, 'Alu', (2.3, 0.02, 0.025), (-4.25, PLAT - 0.008, z))
+    # Each on a small podium the game lifts a little with the music (the drums' is their riser).
+    for part, at, r in (('vox', (0, 0, 2.6), 0.55), ('lead', (-2.8, 0, 2.0), 0.55), ('bass', (2.8, 0, 2.0), 0.55)):
+        k.podium(part, at, r, r, 0.15, 0.35)
+        clear(at[0], at[2], r + 0.1)
+    k.podium('drums', (-4.25, 0, -0.55), 1.1, 1.05, PLAT, 0.3, mic=False)
     clear(-4.25, -0.5, 1.65)
     combo(k, (-3.75, 0, 1.25), 0.1)
     combo(k, (3.75, 0, 1.2), -0.1, 1.25)
@@ -532,16 +522,6 @@ def build(k):
         k.wedge((x, 0, z), 0)
         k.panel('Grille', 0.54, 0.56, (x, 0.284, z - 0.002), 0, -math.pi / 2 - 0.4366)
         clear(x, z, 0.45)
-    mic(k, (0, 0, 2.98), -0.15)
-    mic(k, (-2.25, 0, 2.45), -0.12)
-    mic(k, (2.25, 0, 2.45), -0.12)
-    # A pedalboard at the guitarist's feet.
-    box(k, 'Dark', (0.56, 0.03, 0.24), (-2.95, 0.015, 2.42), 0.05, 0, 0.008)
-    for i, glow in enumerate(('Glow.Red', 'Glow.Green', 'Glow.Amber', 'Glow.Red')):
-        px = -3.16 + i * 0.14
-        box(k, 'Alu' if i % 2 else 'Steel', (0.1, 0.035, 0.15), (px, 0.047, 2.42), 0.05, 0, 0.006)
-        k.drum('Chrome', 0.012, 0.012, (px, 0.064, 2.45), 6)
-        box(k, glow, (0.008, 0.004, 0.008), (px, 0.066, 2.38))
     # Cables taped across the floor: from the booth to the wedges and microphones, the amps, the
     # drums, and the feeds from the wall.
     taped(k, [(0.45, 0.83), (0.45, 3.0), (0.25, 3.3)])

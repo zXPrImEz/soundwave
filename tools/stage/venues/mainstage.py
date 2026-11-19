@@ -1009,25 +1009,20 @@ def build(k):
             for i in range(4):
                 k.rod('Alu', (s * (DECK_HALF + 0.1 + i * 1.1), DECK_Y - i * 0.9, z), (s * (DECK_HALF + 0.1 + i * 1.1), DECK_Y + 0.9 - i * 0.9, z), 0.02, 6)
         prism(k.bm('Black'), [(0, 0), (12, 0), (0, DECK_Y)] if s > 0 else [(-12, 0), (0, 0), (0, DECK_Y)], 2.4, Matrix.Translation((s * DECK_HALF, 0, -17)))
-    # The band at the front: the singer out on the thrust, guitar and bass either side with their
-    # amps, the drums on a riser behind; wedges, mic stands, cables.
-    band = {'vox': (0, DECK_Y, -6.5), 'lead': (-5.5, DECK_Y, -14.0), 'bass': (5.5, DECK_Y, -14.0), 'drums': (0, DECK_Y + 0.6, -17.4)}
-    for name, at in band.items():
-        k.mark(name, at)
-    k.box('Black', (4.2, 0.6, 3.2), (0, DECK_Y + 0.3, -17.4), bevel=0.02)
-    k.floor('Wood', 4.0, 3.0, (0, DECK_Y + 0.605, -17.4))
-    gbox(k.bm('Glow.Edge'), (4.2, 0.03, 0.03), (0, DECK_Y + 0.57, -15.79))
+    # The band at the front, each player on a podium the game lifts with the music: the singer out
+    # on the thrust on the biggest, guitar and bass either side with their amps, the drums on a
+    # wide one behind; cables.
+    k.podium('vox', (0, DECK_Y, -6.5), 1.8, 1.8, 0.4, 1.6, wedge=True)
+    for s, part in ((-1, 'lead'), (1, 'bass')):
+        k.podium(part, (s * 5.5, DECK_Y, -15.0), 1.5, 1.5, 0.4, 1.2, wedge=True, pedals=True)
+    k.podium('drums', (0, DECK_Y, -17.6), 2.4, 1.8, 0.6, 0.9, mic=False)
     for s in (-1, 1):
         k.amp((s * 7.0, DECK_Y, -16.6), -s * 0.15)
         k.amp((s * 7.9, DECK_Y, -16.75), -s * 0.2, 1)
-        k.wedge((s * 5.5, DECK_Y, -13.3))
-        k.wedge((s * 0.75, DECK_Y, -5.3))
-        k.mic_stand((s * 5.5, DECK_Y, -13.65), -0.12)
-        tube(k.bm('Rubber'), [(s * 5.5, DECK_Y + 0.02, -13.9), (s * 6.2, DECK_Y + 0.02, -15.2), (s * 7.0, DECK_Y + 0.02, -16.3)], 0.015, 5)
+        tube(k.bm('Rubber'), [(s * 6.4, DECK_Y + 0.02, -15.7), (s * 6.7, DECK_Y + 0.02, -16.0), (s * 7.0, DECK_Y + 0.02, -16.3)], 0.015, 5)
         tube(k.bm('Rubber'), [(s * 7.4, DECK_Y + 0.02, -16.9), (s * 9.5, DECK_Y + 0.02, -18.6), (s * 9.9, DECK_Y + 0.02, -22.5)], 0.015, 5)
-        tube(k.bm('Rubber'), [(s * 1.9, DECK_Y + 0.62, -18.0), (s * 2.3, DECK_Y + 0.02, -18.4), (s * 6.0, DECK_Y + 0.02, -19.6), (s * 9.7, DECK_Y + 0.02, -22.4)], 0.015, 5)
-    k.mic_stand((0, DECK_Y, -6.05), -0.15)
-    tube(k.bm('Rubber'), [(0, DECK_Y + 0.02, -6.2), (0.5, DECK_Y + 0.02, -9.5), (-0.3, DECK_Y + 0.02, -13.0), (2.4, DECK_Y + 0.02, -15.6)], 0.015, 5)
+        tube(k.bm('Rubber'), [(s * 2.5, DECK_Y + 0.02, -18.3), (s * 6.0, DECK_Y + 0.02, -19.6), (s * 9.7, DECK_Y + 0.02, -22.4)], 0.015, 5)
+    tube(k.bm('Rubber'), [(0, DECK_Y + 0.02, -8.2), (0.5, DECK_Y + 0.02, -9.5), (-0.3, DECK_Y + 0.02, -13.0), (2.4, DECK_Y + 0.02, -15.6)], 0.015, 5)
 
     # Along the deck's front and the catwalk: flame jets, CO2 jets, spark fountains, moving heads
     # pointing up; round the platform at the catwalk's end, more of each.
