@@ -16,7 +16,5 @@ export async function buildVenue(id: VenueId, ctx: VenueContext): Promise<Venue>
       return (await import('./arena')).buildArena(ctx);
     case 'basement':
       return (await import('./basement')).buildBasement(ctx);
-    case 'bar':
-      return (await import('./bar')).buildBar(ctx);
   }
 }

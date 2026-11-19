@@ -9,7 +9,6 @@ export const VENUES = [
   { id: 'warehouse', name: 'Warehouse', blurb: 'Concrete, lasers and strobes in an old factory hall' },
   { id: 'arena', name: 'Arena 360', blurb: 'In the round under a steel dome, halos of light overhead' },
   { id: 'basement', name: 'Basement', blurb: 'A DJ in the middle of the crowd, filmed by hand' },
-  { id: 'bar', name: 'Bar', blurb: 'A small stage in a bar, close enough to touch' },
 ] as const;
 
 export type VenueId = (typeof VENUES)[number]['id'];

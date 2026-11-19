@@ -23,9 +23,7 @@ Made by `tools/stage/textures/build_textures.py` from scanned materials by
 | `steel_paint`    | [PaintedMetal004](https://ambientcg.com/view?id=PaintedMetal004)       |
 | `steel_ribbed`   | [CorrugatedSteel005](https://ambientcg.com/view?id=CorrugatedSteel005) |
 | `steel_tread`    | [DiamondPlate008C](https://ambientcg.com/view?id=DiamondPlate008C)     |
-| `velvet`         | [Fabric026](https://ambientcg.com/view?id=Fabric026)                   |
 | `carpet`         | [Carpet016](https://ambientcg.com/view?id=Carpet016)                   |
-| `leather`        | [Leather037](https://ambientcg.com/view?id=Leather037)                 |
 | `grass`          | [Grass004](https://ambientcg.com/view?id=Grass004)                     |
 | `ground`         | [Ground037](https://ambientcg.com/view?id=Ground037)                   |
 | `asphalt`        | [Asphalt031](https://ambientcg.com/view?id=Asphalt031)                 |

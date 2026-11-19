@@ -5,7 +5,7 @@ import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
   it('knows every venue and the random choice', () => {
-    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'monolith', 'warehouse', 'arena', 'basement', 'bar']);
+    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'monolith', 'warehouse', 'arena', 'basement']);
     for (const v of VENUE_IDS) expect(isVenueChoice(v)).toBe(true);
     expect(isVenueChoice('random')).toBe(true);
     expect(isVenueChoice('stadium')).toBe(false);
@@ -14,7 +14,7 @@ describe('venues', () => {
   });
 
   it('builds the chosen venue, and a real one for random', () => {
-    expect(resolveVenue('bar', 3)).toBe('bar');
+    expect(resolveVenue('basement', 3)).toBe('basement');
     for (let seed = 0; seed < 50; seed++) {
       const v = resolveVenue('random', seed);
       expect(VENUE_IDS).toContain(v);
@@ -34,6 +34,8 @@ describe('venues', () => {
     expect(normalizeSettings({ venue: 'basement' }).venue).toBe('basement');
     expect(normalizeSettings({ venue: 'random' }).venue).toBe('random');
     expect(normalizeSettings({ venue: 'stadium' as never }).venue).toBe(DEFAULT_VENUE);
+    // The Bar was retired; a set stored with it opens in the default venue.
+    expect(normalizeSettings({ venue: 'bar' as never }).venue).toBe(DEFAULT_VENUE);
   });
 });
 
