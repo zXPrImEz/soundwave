@@ -21,6 +21,7 @@ import type { Look, Venue, VenueFrame } from '../venues/types';
 import { Director } from './Director';
 import { LightShow, PALETTES, type ShowState } from './LightShow';
 import { Particles } from './Particles';
+import { Pyro, type PyroBudget } from './pyro';
 
 export interface StageOptions {
   mode: 'play' | 'menu';
@@ -41,10 +42,16 @@ export interface StageFrame {
 
 /** Share of the moving heads lit, and particle budgets, per level. */
 const BEAM_SHARE: Record<Level, number> = { off: 0, low: 0.34, medium: 0.67, high: 1 };
-const SPARKS: Record<Level, number> = { off: 0, low: 1500, medium: 4000, high: 9000 };
-const SPARKS_PER_RAY: Record<Level, number> = { off: 0, low: 6, medium: 12, high: 22 };
-const SMOKE: Record<Level, number> = { off: 0, low: 250, medium: 700, high: 1400 };
-const CO2_PER_JET: Record<Level, number> = { off: 0, low: 6, medium: 14, high: 24 };
+const SPARKS: Record<Level, number> = { off: 0, low: 2000, medium: 5000, high: 10000 };
+const SMOKE: Record<Level, number> = { off: 0, low: 400, medium: 1200, high: 2400 };
+const PYRO: Record<Level, PyroBudget> = {
+  off: { stars: 0, shells: 0, comets: 0, gerbRate: 0, trailRate: 0, co2Rate: 0, embers: 0, puffs: 0 },
+  low: { stars: 36, shells: 1, comets: 0.5, gerbRate: 50, trailRate: 25, co2Rate: 20, embers: 4, puffs: 1 },
+  medium: { stars: 70, shells: 2, comets: 1, gerbRate: 120, trailRate: 45, co2Rate: 45, embers: 10, puffs: 2 },
+  high: { stars: 120, shells: 3, comets: 1, gerbRate: 220, trailRate: 70, co2Rate: 70, embers: 18, puffs: 3 },
+};
+/** Low fog rolling off the deck in quiet passages, puffs a second (none on low settings). */
+const FOG: Record<Level, number> = { off: 0, low: 0, medium: 6, high: 12 };
 const CONFETTI: Record<Level, number> = { off: 0, low: 900, medium: 2400, high: 5000 };
 const EXPOSURE = 0.86;
 
@@ -106,6 +113,11 @@ export class Stage {
   private finaleShot = 0;
   private readonly sparks: Particles;
   private readonly smoke: Particles;
+  private readonly pyro: Pyro;
+  /** Salvos fired so far: each picks its bursts in turn. */
+  private salvo = 0;
+  /** Low fog: how much is rolling off the deck now, 0..1. */
+  private fog = 0;
   private readonly owned: { dispose(): void }[] = [];
   private readonly looks: Look[];
   private readonly key = new THREE.Color();
@@ -187,9 +199,18 @@ export class Stage {
       this.scene.add(this.confetti.points);
       this.owned.push(this.confetti);
     }
-    this.sparks = new Particles(SPARKS[g.effects] || 1, THREE.AdditiveBlending);
-    this.smoke = new Particles(SMOKE[g.effects] || 1, THREE.NormalBlending);
-    this.scene.add(this.sparks.points, this.smoke.points);
+    this.sparks = new Particles(SPARKS[g.effects] || 1, 'sparks');
+    this.smoke = new Particles(SMOKE[g.effects] || 1, 'smoke');
+    this.pyro = new Pyro(this.sparks.sim, this.smoke.sim, PYRO[menu ? 'off' : g.effects]);
+    this.pyro.gravity = venue.sparkGravity ?? -9;
+    // A burst lights the room in its colour (see roomLights), unless a brighter one still does.
+    this.pyro.onBurst = (x, y, z, c, strength) => {
+      const b = shared.uBurst.value;
+      if (strength < b.w * 0.8) return;
+      b.set(x, y, z, strength);
+      shared.uBurstCol.value.setRGB(c.r, c.g, c.b).lerp(WHITE, 0.3).multiplyScalar(0.9);
+    };
+    this.scene.add(this.sparks.mesh, this.smoke.mesh);
     this.owned.push(this.sparks, this.smoke);
 
     if (venue.mirror && (g.lights === 'medium' || g.lights === 'high')) {
@@ -358,8 +379,8 @@ export class Stage {
     // In overdrive the jets keep time: all of them on the bar, every other one on the beats between.
     if (this.flames && this.finaleLeft <= 0 && this.show.state.overdrive > 0.5 && beat !== 'none') {
       const turn = this.beats;
-      if (beat === 'downbeat') this.flames.fire(this.show.state.time, undefined, 0.9);
-      else this.flames.fire(this.show.state.time, (i) => (i + turn) % 2 === 0, 0.55);
+      if (beat === 'downbeat') this.fireJets(() => true, 0.9);
+      else this.fireJets((i) => (i + turn) % 2 === 0, 0.55);
     }
     // The finale: salvos in turn (the middle, the sides, the lot), with smoke on every third.
     if (this.finaleLeft > 0) {
@@ -375,10 +396,21 @@ export class Stage {
     }
     this.crowd.clap.value = this.finaleLeft > 0 ? 1 : 0;
     // Through the finale the jets burn without a break, and are let go as it ends.
-    this.flames?.hold(this.show.state.time, this.finaleLeft > 0);
-    shared.uFire.value = this.flames?.glow(this.show.state.time) ?? 0;
+    if (this.flames) {
+      const was = this.flames.holding;
+      this.flames.hold(this.show.state.time, this.finaleLeft > 0);
+      if (!was && this.flames.holding) for (const [x, y, z] of this.venue.flames ?? []) this.pyro.burn(x, y, z, this.finaleLeft);
+      if (was && !this.flames.holding) for (const [x, y, z] of this.venue.flames ?? []) this.pyro.flame(x, y, z, 0.6);
+    }
+    // Fire flickers, and so does the light it throws.
+    const t = this.show.state.time;
+    shared.uFire.value = (this.flames?.glow(t) ?? 0) * (0.86 + 0.14 * Math.sin(t * 23) * Math.sin(t * 37 + 1));
+    // Low fog in quiet passages: it gathers slowly and thins as the music picks up.
+    this.fog += ((this.show.state.level === 'calm' ? 1 : 0) - this.fog) * Math.min(1, dt * 0.25);
+    this.pyro.drift(dt, this.venue.co2, FOG[this.g.effects] * this.fog, TMP_C.copy(this.wash).lerp(WHITE, 0.8));
+    this.pyro.update(dt);
     this.sparks.update(dt, this.venue.sparkGravity ?? -9);
-    this.smoke.update(dt, 0.4);
+    this.smoke.update(dt, 1);
     this.confetti?.update(dt);
     shared.uBurst.value.w *= Math.exp(-dt * 1.6);
     this.director.update(dt, beat === 'downbeat', this.show.state.level, f.barSeconds);
@@ -446,6 +478,7 @@ export class Stage {
     this.beams.update(this.camera, scale);
     if (this.venue.pools !== undefined) this.beams.pools(this.venue.pools);
     else for (const c of shared.uPoolCol.value) c.setRGB(0, 0, 0);
+    if (this.smoke.mesh.visible) this.beams.light(this.smoke.beams.pos, this.smoke.beams.dir, this.smoke.beams.col);
     this.sparks.setScale(scale);
     this.smoke.setScale(scale);
     this.confetti?.setScale(scale);
@@ -622,60 +655,31 @@ export class Stage {
     const jets = this.venue.flames?.length ?? 0;
     const [from, to] = this.venue.flameMiddle ?? [Math.floor(jets * 0.3), Math.ceil(jets * 0.7) - 1];
     const mid = (i: number) => i >= from && i <= to;
-    if (!this.flames?.holding) this.flames?.fire(this.show.state.time, (i) => which === 'all' || (which === 'center') === mid(i));
-    const perRay = SPARKS_PER_RAY[this.g.effects];
-    if (!perRay) return;
-    const origin = new THREE.Vector3();
-    const dir = new THREE.Vector3();
+    if (!this.flames?.holding) this.fireJets((i) => which === 'all' || (which === 'center') === mid(i));
+    const salvo = this.salvo++;
     this.venue.fireworks.forEach((f, index) => {
-      if (index === 0 || which === 'sides') shared.uBurst.value.set(f.origin[0], f.origin[1] + 14, f.origin[2], 1);
-      const side = f.side ?? Math.abs(f.origin[0]) >= 40;
       const x = Math.abs(f.origin[0]);
+      const side = f.side ?? x >= 40;
       if (which === 'center' && (f.side ?? x > 35)) return;
       if (which === 'sides' && !side) return;
-      origin.set(...f.origin);
-      const c = (index % 2 ? this.accent : this.key).clone().lerp(WHITE, 0.45);
-      this.sparks.spawn(origin, ZERO, [1, 0.95, 1], 4.5, 0.4, 0, 0, 0.6);
-      for (let k = 0; k < f.n; k++) {
-        const ang = ((-f.spread + (2 * f.spread * k) / Math.max(1, f.n - 1) + (Math.random() - 0.5) * 8 + f.lean) * Math.PI) / 180;
-        dir.set(Math.sin(ang), Math.cos(ang), 0.25).normalize();
-        const len = f.length[0] + Math.random() * (f.length[1] - f.length[0]);
-        for (let j = 0; j < perRay; j++) {
-          const speed = (len / 1.3) * (0.25 + 0.85 * (j / perRay)) * (0.95 + Math.random() * 0.1);
-          this.sparks.spawn(
-            origin,
-            TMP_V.copy(dir).multiplyScalar(speed),
-            [c.r, c.g, c.b],
-            0.55 + Math.random() * 0.35,
-            1.6 + Math.random() * 0.9,
-            0.9,
-            0,
-          );
-        }
-      }
+      // Neighbouring launchers swap the show's two colours, so a salvo is never one flat colour.
+      const odd = index % 2 === 1;
+      this.pyro.launch(f, odd ? this.accent : this.key, odd ? this.key : this.accent, salvo + (index >> 1));
+    });
+  }
+
+  /** Fires the flame jets `which` picks: each throws its embers and leaves its smoke. */
+  private fireJets(which: (index: number) => boolean, size = 1) {
+    if (!this.flames) return;
+    this.flames.fire(this.show.state.time, which, size);
+    this.venue.flames?.forEach(([x, y, z], i) => {
+      if (which(i)) this.pyro.flame(x, y, z, size);
     });
   }
 
   private co2(strength: number) {
-    const per = Math.round(strength * CO2_PER_JET[this.g.effects]);
-    const origin = new THREE.Vector3();
-    const tint = this.wash.clone().lerp(WHITE, 0.75);
-    for (const c of this.venue.co2) {
-      origin.set(...c);
-      for (let k = 0; k < per; k++) {
-        TMP_V.set((Math.random() - 0.5) * 2.2, 9 + Math.random() * 7, (Math.random() - 0.5) * 2.2 + 0.8);
-        this.smoke.spawn(
-          origin,
-          TMP_V,
-          [tint.r * 0.8, tint.g * 0.8, tint.b * 0.85],
-          1.5 + Math.random() * 1.5,
-          2.2 + Math.random() * 1.3,
-          1.6,
-          4.0,
-          0.16,
-        );
-      }
-    }
+    const tint = TMP_C.copy(this.wash).lerp(WHITE, 0.85);
+    for (const [x, y, z] of this.venue.co2) this.pyro.co2(x, y, z, strength, tint);
   }
 
   private adaptResolution(dt: number) {
@@ -723,6 +727,5 @@ function passMaterials(pass: object): THREE.Material[] {
 
 const TMP_C = new THREE.Color();
 const TMP_V = new THREE.Vector3();
-const ZERO = new THREE.Vector3();
 const WHITE = new THREE.Color(1, 1, 1);
 const HAZE_NEAR: [number, number, number] = [0.03, 0.035, 0.15];

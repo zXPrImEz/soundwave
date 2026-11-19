@@ -38,6 +38,8 @@ export class Beams {
   private readonly flareSize: Float32Array;
   /** Where each beam points this frame. */
   private readonly aim: THREE.Vector3[];
+  /** Scratch for light(): the level of the beam in each slot. */
+  private readonly lit = new Float32Array(32);
 
   constructor(readonly fixtures: Fixture[]) {
     const n = fixtures.length;
@@ -192,6 +194,29 @@ export class Beams {
         col[i].copy(p.c).multiplyScalar(p.k);
       } else col[i].setRGB(0, 0, 0);
     }
+  }
+
+  /**
+   * The brightest beams as they stand this frame, for what catches their light in the air (smoke):
+   * origin and spread (radius per metre), direction and length, colour times level. Slots left over
+   * stay black. Call after update.
+   */
+  light(pos: THREE.Vector4[], dir: THREE.Vector4[], col: THREE.Color[]) {
+    const levels = this.lit;
+    levels.fill(0);
+    for (let i = 0; i < this.fixtures.length; i++) {
+      const level = this.states[i].level;
+      // The dimmest slot taken so far makes way for a brighter beam.
+      let slot = 0;
+      for (let k = 1; k < col.length; k++) if (levels[k] < levels[slot]) slot = k;
+      if (level < 0.03 || level <= levels[slot]) continue;
+      const f = this.fixtures[i];
+      levels[slot] = level;
+      pos[slot].set(f.pos[0], f.pos[1], f.pos[2], f.spread ?? SPREAD[f.group] ?? 0.012);
+      dir[slot].set(this.aim[i].x, this.aim[i].y, this.aim[i].z, f.length ?? LENGTH[f.group] ?? 100);
+      col[slot].copy(this.states[i].color).multiplyScalar(level);
+    }
+    for (let k = 0; k < col.length; k++) if (!levels[k]) col[k].setRGB(0, 0, 0);
   }
 
   dispose() {
