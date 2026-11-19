@@ -87,15 +87,15 @@ export class Flames {
           vec3 col = vec3(0.85, 0.12, 0.02) * smoothstep(0.02, 0.3, heat)
             + vec3(1.0, 0.42, 0.06) * smoothstep(0.2, 0.55, heat)
             + vec3(0.9, 0.62, 0.22) * smoothstep(0.5, 0.8, heat)
-            + vec3(0.9, 0.88, 0.75) * smoothstep(0.78, 1.0, heat);
+            + vec3(0.8, 0.7, 0.45) * smoothstep(0.82, 1.0, heat);
           col *= smoothstep(0.0, 0.25, heat);
           // At the nozzle, while the fuel runs, the gas burns blue-white before it catches.
           float nozzle = (1.0 - smoothstep(0.0, 0.07, y)) * smoothstep(0.3, 0.9, shape) * (1.0 - smoothstep(0.3, 0.45, vAge)) * step(0.01, vAge);
           col += vec3(0.35, 0.55, 1.0) * nozzle * 0.7;
           // The air around the column glows with its heat.
           float halo = exp(-bent * bent * 3.0) * (1.0 - 0.6 * y) * live * smoothstep(head, head - 0.5, y);
-          col += vec3(1.0, 0.32, 0.06) * halo * 0.16;
-          gl_FragColor = vec4(col * 2.1, 1.0);
+          col += vec3(1.0, 0.32, 0.06) * halo * 0.1;
+          gl_FragColor = vec4(col * 0.9, 1.0);
           ${OUTPUT}
         }`,
     });
