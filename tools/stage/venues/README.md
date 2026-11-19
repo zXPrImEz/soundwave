@@ -26,7 +26,10 @@ preview of one of the module's `views`, for checking shape and layout while mode
   - `LED_<name>` or `LED_<name>_<n>`: an LED screen, uvs 0..1 across it.
   - `Proto_<name>`: a shape the game repeats at the places `kit.instance(name, ...)` records.
   - `Move_<name>`: a part the game moves or lights by itself.
+  - `Podium_<part>_<piece>`: a player's podium (`kit.podium`), lifted with the music by the game
+    (`src/render/venues/kit/podiums.ts`); its lid and wall take the role `Podium.<part>`.
 - **`venue.json`** carries what the game needs to know: `fixtures` (every `kit.moving_head`),
-  `marks` (where the players and the DJ stand), `screens`, `instances`, `sources` (laser heads,
+  `marks` (where the players and the DJ stand), `podiums` (each player's: half axes, how far it
+  rises, the floor it stands on), `screens`, `instances`, `sources` (laser heads,
   spark fountains, CO2 jets, confetti cannons, flame jets, fireworks), and whatever the module
   returns besides `views` and `ao`.

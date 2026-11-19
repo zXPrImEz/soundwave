@@ -101,8 +101,8 @@ def bake_contact_shading(objs, samples, distance):
 
 def export(out_dir):
     os.makedirs(out_dir, exist_ok=True)
-    # Glows, screens and repeated parts are lit by the game alone; the rest gets its shading baked.
-    shaded = [o for o in objects if not o.data.materials[0].name.startswith(('Glow', 'LED')) and not o.name.startswith('Proto_')]
+    # Glows, screens, podium displays and repeated parts are lit by the game alone; the rest gets its shading baked.
+    shaded = [o for o in objects if not o.data.materials[0].name.startswith(('Glow', 'LED', 'Podium')) and not o.name.startswith('Proto_')]
     if not args.no_ao:
         bake_contact_shading(shaded, args.ao_samples, ao_distance)
     data = {'version': 1, **kit.data, **own}

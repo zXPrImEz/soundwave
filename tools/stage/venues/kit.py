@@ -14,6 +14,7 @@ own (LED screens, things it animates, shapes it repeats) are objects of their ow
     LED_<name>    an LED screen; its uvs run 0..1 across it (LED_<name>_<n> for several of one kind)
     Move_<name>   a part the game moves
     Proto_<name>  a shape the game repeats (its positions are in the JSON)
+    Podium_<part>_<piece>  a player's podium, which the game raises and lowers (see Kit.podium)
 
 (Underscores, not dots: the game's glTF loader drops dots from names.)
 
@@ -36,6 +37,7 @@ PREVIEW = {
     'Floor': (0.22, 0.21, 0.2), 'Brick': (0.42, 0.2, 0.14), 'Wood': (0.3, 0.17, 0.08), 'Fabric': (0.25, 0.05, 0.08),
     'Hazard': (0.85, 0.65, 0.05), 'Crane': (0.7, 0.5, 0.08), 'Glass': (0.05, 0.08, 0.14), 'Grass': (0.12, 0.2, 0.08),
     'Seats': (0.08, 0.1, 0.25), 'Graffiti': (0.45, 0.2, 0.35), 'Panels': (0.3, 0.3, 0.32), 'Plaster': (0.14, 0.12, 0.16),
+    'Podium': (0.12, 0.16, 0.45),
 }
 
 
@@ -464,6 +466,85 @@ class Kit:
             a = k / 3 * math.tau
             self.rod('Black', p + Vector((0, 0.1, 0)), p + Vector((math.cos(a) * 0.28, 0.0, math.sin(a) * 0.28)), 0.01, 4)
         self.rod('Chrome', p, p + Vector((0, 1.45, lean)), 0.012, 6)
+
+    # ------------------------------------------------------------------ the players' podiums
+    def podium(self, part, at, rx, ry, height, travel, yaw=0.0, wedge=False, mic=True, pedals=False):
+        """
+        A player's podium as Moonrise has them: a round lift (an ellipse, half axes rx across and
+        ry deep) standing `height` tall on the floor at `at`, which the game raises by up to
+        `travel` with the music. Its lid shows a turning record and its wall the sound as a
+        waveform (the game's podium shader, by the role Podium.<part>); a lit ring runs round the
+        rim. On it the player's own things, turned to `yaw` (the way the player faces): a wedge at
+        the front edge, a microphone, a pedalboard. The wall reaches below the floor as far as the
+        lift rises, so no gap opens under it. The parts are objects named Podium_<part>_*; the
+        player's mark goes on the lid, the podium into data['podiums'].
+        UV: the lid is marked by v = -1; on the wall u runs once round it.
+        """
+        x, floor, z = at
+        top, foot, bevel, n = floor + height, floor - travel - 0.15, 0.04, 72
+
+        def body(b):
+            uv = b.loops.layers.uv.active
+
+            def ring(inset, y):
+                return [b.verts.new((x + math.cos(math.tau * k / n) * (rx - inset), y, z + math.sin(math.tau * k / n) * (ry - inset))) for k in range(n)]
+
+            lid, edge, base = ring(bevel, top), ring(0.0, top - bevel), ring(0.0, foot)
+            for loop in b.faces.new(list(reversed(lid))).loops:
+                loop[uv].uv = (0.0, -1.0)
+            for k in range(n):
+                j = (k + 1) % n
+                for loop in b.faces.new((edge[k], lid[k], lid[j], edge[j])).loops:
+                    loop[uv].uv = (0.0, -1.0)
+                # u runs the way Moonrise's does (a quarter round from the side: the back), so the
+                # shader puts the bass toward the audience.
+                u0, u1 = 1 - k / n, 1 - (k + 1) / n
+                wall = b.faces.new((base[k], edge[k], edge[j], base[j]))
+                wall.smooth = True
+                for loop, w in zip(wall.loops, ((u0, 1.0), (u0, 0.0), (u1, 0.0), (u1, 1.0))):
+                    loop[uv].uv = w
+
+        self.own('Podium_%s_Top' % part, 'Podium.' + part, body)
+
+        p = frame((x, top, z), yaw)
+        reach = min(rx, ry)
+
+        def lamps(b):
+            self.tube('Glow.Podium', [(x + math.cos(a) * (rx + 0.012), top - 0.045, z + math.sin(a) * (ry + 0.012)) for a in (math.tau * i / 96 for i in range(96))], 0.03, 6, True, b)
+            if pedals:
+                for i in range(4):
+                    self.box('Glow.Podium', (0.06, 0.012, 0.04), p(-0.18 + i * 0.12, 0.05, 0.26), yaw, b=b)
+
+        self.own('Podium_%s_Led' % part, 'Glow.Podium', lamps)
+
+        def gear(b):
+            if wedge:
+                at_w = p(0, 0, ry - 0.36)
+                self.prism('Black', [(-0.3, 0), (0.3, 0), (0.3, 0.14), (-0.3, 0.42)], 0.62, at_w, yaw + math.pi / 2, b)
+            if pedals:
+                self.box('Black', (0.6, 0.04, 0.24), p(0, 0.02, 0.2), yaw, bevel=0.008, b=b)
+            if mic:
+                # A stand in front of the player, its boom leaning back to the mouth.
+                d = min(0.5, reach - 0.2, ry - 0.91 if wedge else 1.0)
+                assert d >= 0.3, 'podium %s too small for its microphone and wedge' % part
+                foot_m = Vector(p(0, 0, d))
+                pole = Vector(p(0, 1.38, d))
+                for k in range(3):
+                    a = yaw + k / 3 * math.tau
+                    self.rod('Black', foot_m + Vector((0, 0.1, 0)), foot_m + Vector((math.sin(a) * 0.22, 0, math.cos(a) * 0.22)), 0.01, 4, b=b)
+                self.rod('Black', foot_m, pole, 0.012, 6, b=b)
+                tip = Vector(p(0, 1.48, d - 0.22))
+                self.rod('Black', pole, tip, 0.01, 5, b=b)
+                self.rod('Black', tip, tip + (tip - pole).normalized() * 0.16, 0.022, 8, cap=True, b=b)
+
+        if wedge or pedals or mic:
+            self.own('Podium_%s_Gear' % part, 'Black', gear)
+        if wedge:
+            self.own('Podium_%s_Grille' % part, 'Grille', lambda b: self.panel('Grille', 0.54, 0.56, p(0, 0.284, ry - 0.362), yaw, -math.pi / 2 - 0.4366, b))
+
+        self.mark(part, (x, top, z))
+        self.data.setdefault('podiums', {})[part] = {'rx': rx, 'ry': ry, 'travel': travel, 'floor': round(floor, 3)}
+        return top
 
     # ------------------------------------------------------------------ data the game reads
     def mark(self, name, at):

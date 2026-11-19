@@ -215,27 +215,18 @@ def island(k):
             k.box('Alu', (0.012, 0.05, 0.3), f(x, 0.12, 0.2), yaw)
 
     # The band at the island's front edge: singer in the middle, guitar and bass either side
-    # turned outward, the drums on a low riser to the left, behind them and clear of the DJ.
-    marks = {'vox': (0, DECK, 5.2), 'lead': (-3.3, DECK, 4.3), 'bass': (3.3, DECK, 4.3), 'drums': (-4.9, DECK + 0.4, 0.3)}
-    for name, at in marks.items():
-        k.mark(name, at)
-    k.box('Black', (2.6, 0.4, 2.4), (-4.9, DECK + 0.2, 0.3), bevel=0.02)
-    k.floor('Carpet', 2.4, 2.2, (-4.9, DECK + 0.405, 0.3))
-    k.box('Alu', (2.62, 0.03, 0.03), (-4.9, DECK + 0.39, 1.5))
-    k.wedge((-3.95, DECK + 0.4, 0.9), -1.2)
+    # turned outward, the drums to the left, behind them and clear of the DJ. Each stands on a
+    # podium the game lifts with the music, their things on it turned the way they face.
+    k.podium('vox', (0, DECK, 5.2), 0.95, 0.95, 0.25, 0.9)
+    for side, part in ((-1, 'lead'), (1, 'bass')):
+        x, z = side * 3.3, 4.3
+        k.podium(part, (x, DECK, z), 0.95, 0.95, 0.25, 0.7, math.atan2(2 * x, 2 * z + 6), pedals=True)
+    k.podium('drums', (-5.0, DECK, 0.3), 1.25, 1.2, 0.4, 0.5, mic=False)
     for side in (-1, 1):
         k.amp((side * 5.0, DECK, 2.2), side * 0.5)
         k.amp((side * 4.2, DECK, 2.95), side * 0.3, 1)
-        k.wedge((side * 0.62, DECK, 6.05), side * 0.1)
-        k.wedge(P(6.15, side * 0.654, DECK), side * 0.654)
-        k.mic_stand(P(5.85, side * 0.59, DECK), -0.1)
-        # Pedal boards and a guitar on its stand.
-        k.box('Dark', (0.7, 0.05, 0.35), P(5.75, side * 0.72, DECK + 0.025), side * 0.72, bevel=0.01)
-        for i in range(4):
-            k.box('Glow.Red' if i % 2 else 'Glow.Green', (0.02, 0.01, 0.02), P(5.75, side * (0.68 + i * 0.027), DECK + 0.056))
-        k.tube('Rubber', [(side * 4.8, DECK + 0.02, 2.4), (side * 4.6, DECK + 0.02, 3.8), (side * 3.9, DECK + 0.02, 4.6), P(5.75, side * 0.72, DECK + 0.02)], 0.014, 5)
+        k.tube('Rubber', [(side * 4.8, DECK + 0.02, 2.4), (side * 4.6, DECK + 0.02, 3.8), (side * 3.9, DECK + 0.02, 4.6)], 0.014, 5)
         k.tube('Rubber', [(side * 4.7, DECK + 0.02, 2.0), (side * 3.6, DECK + 0.02, 1.9), (side * 2.4, DECK + 0.02, 1.4)], 0.016, 5)
-    k.mic_stand((0, DECK, 5.55), -0.15)
     # The monitor desk opposite the drums: a console on two cases, a rack beside it.
     for x in (4.3, 5.2):
         k.box('Black', (0.86, 0.7, 0.7), (x, DECK + 0.35, 0.3), bevel=0.02)
