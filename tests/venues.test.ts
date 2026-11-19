@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VENUE, isVenueChoice, menuVenue, resolveVenue, VENUE_IDS, venueName } from '../src/render/venues/catalog';
 import { MIN_FLASH_GAP, StrobeGate } from '../src/render/venues/kit/strobe';
+import { LED_LOOKS, LedScreen } from '../src/render/venues/kit/led';
 import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
@@ -50,5 +51,16 @@ describe('strobes', () => {
     }
     for (let i = 1; i < fired.length; i++) expect(fired[i] - fired[i - 1]).toBeGreaterThanOrEqual(MIN_FLASH_GAP - 1e-9);
     for (let s = 0; s < 10; s++) expect(fired.filter((t) => t >= s && t < s + 1).length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('led screens', () => {
+  it('pick a real look for any bar count, whole or not', () => {
+    const screen = new LedScreen([4, 4], ['bars', 'grid', 'rings'], 1);
+    for (const bar of [0, 1, 1.25, 2.5, 7.75]) {
+      screen.next(bar);
+      screen.update(0);
+      expect(screen.material.uniforms.uLookB.value).toBe(LED_LOOKS[(['bars', 'grid', 'rings'] as const)[Math.floor(bar) % 3]]);
+    }
   });
 });

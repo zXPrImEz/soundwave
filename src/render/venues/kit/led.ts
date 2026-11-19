@@ -177,7 +177,8 @@ export class LedScreen {
   /** Moves to the next look (on a bar, say); it fades in over a second or so. */
   next(bar: number) {
     this.from = this.to;
-    this.to = LED_LOOKS[this.looks[bar % this.looks.length]];
+    // Callers pass bar counts divided by their cycle, often fractional on off bars.
+    this.to = LED_LOOKS[this.looks[Math.floor(bar) % this.looks.length]];
     this.blend = 0;
   }
 
