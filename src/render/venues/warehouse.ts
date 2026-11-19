@@ -9,6 +9,7 @@ import { Lasers, fan } from './kit/lasers';
 import { Bulbs } from './kit/bulbs';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { StrobeGate } from './kit/strobe';
@@ -182,6 +183,8 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const band: Record<string, Vec3> = { vox: marks.vox, lead: marks.lead, bass: marks.bass, drums: marks.drums };
   const players = makeBand({ band }, ctx.cast.band.data.band ?? {}, ctx.focus);
   for (const p of players) p.yaw = Math.atan2(-p.pos[0] * 0.18, 10);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = marks.dj;
 
   const shots = [
@@ -272,9 +275,11 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     L[2].set(HALF - 0.8, 9, -8, 9);
     L[3].set(HALF - 0.8, 9, 40, 9);
     for (let i = 0; i < 4; i++) LC[i].copy(amber).multiplyScalar(0.55);
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
     const peak = s.level === 'peak' || s.overdrive > 0.5;
@@ -503,6 +508,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

@@ -148,7 +148,7 @@ void main() {
  * audience, treble at the back). It is a picture: it glows by itself, on a grid of lamps, and
  * mirrors nothing but a little sky on its glass.
  */
-const PODIUM_FRAGMENT = /* glsl */ `
+export const PODIUM_FRAGMENT = /* glsl */ `
 ${COMMON}
 uniform float uWho; uniform vec2 uRadii; uniform float uFloor;
 varying vec3 vWPos; varying vec3 vWNorm; varying vec2 vUv; varying float vAo;

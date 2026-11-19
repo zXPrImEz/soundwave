@@ -8,6 +8,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { duskSky } from './kit/sky';
@@ -116,6 +117,8 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
   const laserHeads = (data.sources['laser.band'] ?? []).map((p) => new THREE.Vector3(...p));
 
   const { band: marks, players } = bandOn(data, ctx.cast, ctx.focus);
+  const podiums = new Podiums(root, data.podiums, marks, players);
+  owned.push(podiums);
   const deck = data.deck;
   const shots = [
     shot('front', [0, 5.5, 42], [0, 10, -18], 76, 'push', 6, 'all', 3),
@@ -195,9 +198,11 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(2.4, 30);
     shared.uGlowFall.value = 0.0014;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
@@ -325,6 +330,7 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

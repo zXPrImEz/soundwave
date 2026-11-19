@@ -8,6 +8,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { shot } from './kit/shots';
 import { glow, modelSurface, surface } from './kit/surface';
@@ -123,6 +124,8 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
 
   // The band faces out from the island toward the side they stand on.
   const { band, players } = bandOn(data, ctx.cast, ctx.focus, (p) => [p[0] * 3, p[2] * 3 + 6]);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = data.marks.dj;
 
   const shots = [
@@ -219,9 +222,11 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(2.4, 26);
     shared.uGlowFall.value = 0.003;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const t = f.time;
     const busy = busyOf(f.energy);
@@ -367,6 +372,7 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

@@ -2,12 +2,13 @@ import * as THREE from 'three';
 import { LEVEL_SHARE } from '../../game/graphics';
 import { loadVenue } from '../aurora/assets';
 import { CROWD_RECT, buildCrowdMap } from '../aurora/crowdMap';
-import { makeBand, makeCrowd, type Person } from '../aurora/figures';
+import { makeBand, makeCrowd } from '../aurora/figures';
 import { applyVenueMaterials } from '../aurora/materials';
 import { shared } from '../aurora/shared';
 import { buildSky } from '../aurora/sky';
 import { terrainHeight } from '../aurora/terrain';
 import { buildShots, type Vec3 } from '../stage/Director';
+import { Podiums } from './kit/podiums';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 
 /** Camera spots the director adds itself (see buildShots), for placing detailed crowd figures. */
@@ -19,8 +20,6 @@ const EXTRA_CAMERAS: Vec3[] = [
   [7, 5, 5],
   [0, 6, 13],
 ];
-/** The order the shaders know the players in. */
-const PLAYERS = ['lead', 'vox', 'bass', 'drums'];
 
 /**
  * Moonrise: the open-air venue built in Blender (tools/stage/aurora): painted forms, a polished deck,
@@ -41,14 +40,6 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
   const venue = assets.scene.clone(true);
   owned.push(...applyVenueMaterials(venue, data.deck, g.lights === 'medium' || g.lights === 'high'));
   root.add(venue);
-  // Each podium and what stands on it moves as one.
-  const lifts: { part: string; index: number; group: THREE.Group; person?: Person; rest: number; travel: number; height: number }[] = [];
-  for (const [part, p] of Object.entries(data.podiums ?? {})) {
-    const group = new THREE.Group();
-    venue.add(group);
-    for (const piece of venue.children.filter((o) => o.name.startsWith(`Podium_${part}_`))) group.add(piece);
-    lifts.push({ part, index: PLAYERS.indexOf(part), group, rest: data.band[part]?.[1] ?? 0, travel: p.travel, height: 0 });
-  }
 
   // The land, the lake and the festival grounds around the stage.
   const land = assets.scenery;
@@ -80,7 +71,8 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
   const crowdMap = buildCrowdMap(audience, share);
   owned.push(crowdMap);
   const players = makeBand(data, assets.band.data.band ?? {}, ctx.focus);
-  for (const lift of lifts) lift.person = players.find((p) => p.part === lift.part);
+  // Each podium and what stands on it moves as one (the model dresses them itself).
+  const podiums = new Podiums(venue, data.podiums, data.band, players, false);
 
   // Seven jets along the front edge of the deck, between the CO2 nozzles.
   const deck = data.deck;
@@ -119,29 +111,12 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
         shared.uShoreCol.value[i].set(s.color);
       });
     }
-    PLAYERS.forEach((key, i) => {
-      const lift = lifts.find((l) => l.part === key);
-      shared.uBand.value[i].y = (data.band[key]?.[1] ?? 0) + (lift?.height ?? 0);
-    });
+    podiums.bind();
   };
 
-  /**
-   * Raises and lowers the podiums: higher as the music gets busier, the player whose part is being
-   * played above the rest, all the way up in overdrive, and each drifting a little on a cycle of
-   * its own so that none ever stands still. Lifts are slow: they glide.
-   */
   const update = (f: VenueFrame) => {
     if (wheel) wheel.rotation.z += f.dt * 0.045;
-    const busy = Math.min(1, Math.max(0, (f.energy - 0.2) / 0.55));
-    for (const l of lifts) {
-      const drift = 0.5 + 0.5 * Math.sin((f.clock / 16) * Math.PI * 2 + l.index * 1.9);
-      const featured = shared.uFeature.value[l.index] ?? 0.6;
-      const want = Math.max(f.show.overdrive, (0.1 + 0.6 * busy) * (0.5 + 0.5 * featured) + 0.3 * drift * (0.4 + 0.6 * busy));
-      l.height += (l.travel * Math.min(1, want) - l.height) * Math.min(1, f.dt * 0.9);
-      l.group.position.y = l.height;
-      if (l.person) f.band.setHeight(l.person, l.rest + l.height);
-      if (l.index >= 0) shared.uBand.value[l.index].y = l.rest + l.height;
-    }
+    podiums.update(f);
   };
 
   const beam = (group: string, i: number, f: VenueFrame): BeamPose | undefined => {
@@ -173,12 +148,6 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
     return undefined;
   };
 
-  // A close-up of a player follows their podium up and down.
-  const cameraLift = (shot: string) => {
-    const riding = shot === 'band' ? lifts : lifts.filter((l) => shot === `band-${l.part === 'vox' ? 'vocals' : l.part}`);
-    return riding.reduce((sum, l) => sum + l.height, 0) / Math.max(1, riding.length);
-  };
-
   return {
     root,
     shots: buildShots(data.cameras, data.band, ctx.part),
@@ -200,7 +169,8 @@ export async function buildMoonrise(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
-    cameraLift,
+    // A close-up of a player follows their podium up and down.
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

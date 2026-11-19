@@ -7,6 +7,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { StrobeGate } from './kit/strobe';
@@ -95,6 +96,8 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
   const corners = (data.sources.laser ?? []).map((p) => new THREE.Vector3(...p));
 
   const { band, players } = bandOn(data, ctx.cast, ctx.focus, (p) => [p[0] * 0.6, p[2] + 6]);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = data.marks.dj;
   const shots = [
     shot('front', [0.2, 1.95, 6.6], [0, 1.3, 0.5], 86, 'truck', 0.8, 'all', 3),
@@ -147,9 +150,11 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(0.5, 5);
     shared.uGlowFall.value = 0.06;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
@@ -257,6 +262,7 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

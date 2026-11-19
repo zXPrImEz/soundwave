@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { gltf, part, type Fixture } from '../../aurora/assets';
 import type { Vec3 } from '../../stage/Director';
 import type { VenueId } from '../catalog';
+import type { PodiumSpec } from './podiums';
 import { glow } from './surface';
 
 /** What tools/stage/venues/build.py writes next to a venue's venue.glb (game axes). */
@@ -10,6 +11,8 @@ export interface ModelData {
   fixtures: Fixture[];
   /** Named spots: where each player stands, the DJ, ... */
   marks: Record<string, Vec3>;
+  /** The players' podiums, by band key (see kit/podiums). */
+  podiums?: Record<string, PodiumSpec>;
   /** LED screens by name: their size in metres. */
   screens: Record<string, { w: number; h: number }>;
   /** Where each repeated shape goes: x, y, z, yaw, scale. */
