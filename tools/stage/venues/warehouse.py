@@ -14,14 +14,14 @@ import bmesh
 
 import kit as K
 
-HALF, BACK, FRONT, HEIGHT = 25.0, -20.0, 42.0, 14.0
+HALF, BACK, FRONT, HEIGHT = 25.0, -20.0, 74.0, 14.0
 STAGE_FRONT, DECK = -8.0, 1.4
 DJ_FRONT, DJ_RISE = -12.2, 1.1
 GALLERY, GALLERY_Y = 4.2, 5.2
 BAR_X = (-15.5, 0, 15.5)
-BAR_Z = (0, 6, 12, 18, 24, 30)
+BAR_Z = tuple(range(0, 61, 6))
 BAR_TOP = 13.6
-PILLARS = [(x, z) for x in (-17, 17) for z in range(-2, 39, 8)]
+PILLARS = [(x, z) for x in (-17, 17) for z in range(-2, int(FRONT) - 3, 8)]
 
 
 def build(k):
@@ -46,7 +46,7 @@ def build(k):
         # Old paint down the lower wall, from the stage to the back.
         k.panel('Graffiti', FRONT - BACK - 14, 4.4, (sx - side * 0.04, 2.8, (FRONT + BACK + 14) / 2), -side * math.pi / 2)
         # Tall factory windows with iron frames and a sill, night outside.
-        for z in range(-12, 37, 8):
+        for z in range(-12, int(FRONT) - 5, 8):
             k.panel('Glass', 4.2, 5.6, (sx - side * 0.05, 8.7, z), -side * math.pi / 2)
             for i in range(-1, 2):
                 k.box('Steel', (0.12, 5.7, 0.1), (sx - side * 0.1, 8.7, z + i * 1.4))
@@ -55,21 +55,21 @@ def build(k):
             k.box('Concrete', (0.5, 0.18, 4.6), (sx - side * 0.2, 5.82, z))
             k.box('Concrete', (0.4, 0.4, 4.8), (sx - side * 0.15, 11.75, z))
         # Sodium lamps on brackets between the windows.
-        for z in (-8, 8, 24):
+        for z in range(-8, int(FRONT) - 8, 16):
             k.box('Steel', (0.6, 0.12, 0.12), (sx - side * 0.3, 9.6, z))
             k.box('Dark', (0.5, 0.28, 0.8), (sx - side * 0.6, 9.45, z), bevel=0.03)
             k.box('Glow.Sodium', (0.36, 0.05, 0.62), (sx - side * 0.6, 9.29, z))
         # Pipes along the wall, with brackets, and a pipe that drops into the floor.
         for y, r in ((4.0, 0.16), (4.45, 0.09), (12.6, 0.3)):
             k.rod('Steel', (sx - side * 0.4, y, BACK), (sx - side * 0.4, y, FRONT), r, 12)
-        for z in range(-18, 42, 4):
+        for z in range(-18, int(FRONT), 4):
             k.box('Steel', (0.5, 0.06, 0.08), (sx - side * 0.25, 3.8, z))
-        k.tube('Steel', [(sx - side * 0.4, 4.0, 40), (sx - side * 0.4, 3.6, 40.4), (sx - side * 0.4, 0, 40.5)], 0.16, 12)
+        k.tube('Steel', [(sx - side * 0.4, 4.0, FRONT - 2), (sx - side * 0.4, 3.6, FRONT - 1.6), (sx - side * 0.4, 0, FRONT - 1.5)], 0.16, 12)
         # Fuse boxes and a fire extinguisher by the door.
         for z in (-4.5, 14.5):
             k.box('Panels', (0.25, 1.2, 0.8), (sx - side * 0.14, 1.8, z), bevel=0.02)
-        k.drum('Glow.Red', 0.09, 0.55, (sx - side * 0.3, 0.6, 37), 12)
-        k.box('Glow.Exit', (0.06, 0.32, 0.9), (sx - side * 0.07, 3.2, 38))
+        k.drum('Glow.Red', 0.09, 0.55, (sx - side * 0.3, 0.6, FRONT - 5), 12)
+        k.box('Glow.Exit', (0.06, 0.32, 0.9), (sx - side * 0.07, 3.2, FRONT - 4))
 
         # The gallery: a grated floor on posts, a rail with a hazard edge, stairs at the back.
         inner = side * (HALF - GALLERY)
@@ -90,20 +90,20 @@ def build(k):
             k.box('Steel', (1.2, 0.08, 0.32), (inner - side * 0.7, (i + 1) * GALLERY_Y / 16, z1 + 0.3 * (16 - i)))
         k.rod('Steel', (inner - side * 1.3, 1.0, z1 + 4.8), (inner - side * 1.3, GALLERY_Y + 1.0, z1), 0.025, 6)
         # Lamps along the gallery's underside.
-        for z in range(2, 37, 8):
+        for z in range(2, int(FRONT) - 5, 8):
             k.box('Glow.Sodium', (0.3, 0.04, 0.3), (side * (HALF - GALLERY / 2), GALLERY_Y - 0.27, z))
 
     # Roof: trusses across the hall, ducts along it, skylights between the trusses.
     z = -16.0
-    while z <= 40:
+    while z <= FRONT - 2:
         k.truss('Steel', (-HALF, HEIGHT - 0.6, z), (HALF, HEIGHT - 0.6, z), 0.9)
         z += 7
     for x in (-10, 10):
         k.rod('Steel', (x, HEIGHT - 1.8, BACK), (x, HEIGHT - 1.8, FRONT), 0.45, 16)
-        for z in range(-18, 42, 6):
+        for z in range(-18, int(FRONT), 6):
             k.box('Steel', (1.0, 0.08, 0.08), (x, HEIGHT - 1.3, z))
             k.rod('Steel', (x, HEIGHT - 1.3, z), (x, HEIGHT, z), 0.02, 4)
-    for z in (-6.5, 7.5, 21.5, 35.5):
+    for z in (-6.5, 7.5, 21.5, 35.5, 49.5, 63.5):
         k.panel('Glass', 18, 4.5, (0, HEIGHT - 0.02, z), 0, math.pi / 2)
 
     # Pillars down both sides, with hazard bands and a red light on each.
@@ -133,7 +133,7 @@ def build(k):
     k.box('Hazard', (0.9, 0.5, 0.5), (-4, 6.55, 27.8), bevel=0.04)
     k.torus('Steel', 0.24, 0.07, (-4, 6.0, 27.8), 0, math.pi / 2, 20, 8, math.pi * 1.5)
     # Chains hanging from the roof here and there.
-    for x, z, length in ((-12, 4, 4), (9, 14, 3), (-6, 33, 5), (14, 36, 3.5), (-19, 18, 2.5)):
+    for x, z, length in ((-12, 4, 4), (9, 14, 3), (-6, 33, 5), (14, 36, 3.5), (-19, 18, 2.5), (-11, 47, 4), (12, 57, 3), (-16, 66, 3.5)):
         k.rod('Chrome', (x, HEIGHT - 0.6, z), (x, HEIGHT - 0.6 - length, z), 0.02, 4)
         k.torus('Chrome', 0.08, 0.02, (x, HEIGHT - 0.7 - length, z), 0, math.pi / 2, 12, 5)
 
@@ -241,12 +241,12 @@ def build(k):
     k.proto('cable', 'Black', lambda b: k.rod('Black', (0, 0, 0), (0, 1, 0), 0.012, 4, b=b))
     # The spine: two trusses down the middle of the hall, hung on chains, heads along both.
     for x in (-1.3, 1.3):
-        k.truss('Steel', (x, 12.7, -6), (x, 12.7, 36), 0.45)
-        for z in range(-4, 37, 8):
+        k.truss('Steel', (x, 12.7, -6), (x, 12.7, FRONT - 6), 0.45)
+        for z in range(-4, int(FRONT) - 5, 8):
             k.rod('Chrome', (x, 12.9, z), (x, HEIGHT - 0.6, z), 0.015, 4)
-        for i, z in enumerate(range(-4, 36, 4)):
+        for i, z in enumerate(range(-4, int(FRONT) - 6, 6)):
             k.moving_head((x, 12.25, z + (1 if x > 0 else -1)), (x * 0.25, -1, -0.12), 'Spine', 15, 0.035)
-    for z in range(-4, 37, 4):
+    for z in range(-4, int(FRONT) - 5, 6):
         k.box('Steel', (2.6, 0.08, 0.08), (0, 12.7, z))
     # LED cubes hanging in two rows down the hall, either side of the spine.
     def cube(b, at):
@@ -255,7 +255,7 @@ def build(k):
             k.panel('LED.cube', 2.6, 2.6, (at[0] + dx, at[1], at[2] + dz), yaw, b=b)
     n = 0
     for x in (-8.2, 8.2):
-        for z in (3, 11, 19, 27):
+        for z in (3, 11, 19, 27, 35, 43, 51, 59):
             y = 9.6
             k.own('LED_cube_%d' % n, 'LED.cube', lambda b, at=(x, y, z): cube(b, at))
             n += 1
@@ -277,7 +277,7 @@ def build(k):
     k.own('Move_emblem', 'Glow.Emblem', emblem)
     # The moon through the windows (beams without bodies).
     for side in (-1, 1):
-        for z in (-4, 12, 28):
+        for z in (-4, 12, 28, 44, 60):
             k.moving_head((side * (HALF - 0.4), 9.5, z), (-side * 0.75, -0.62, 0.15), 'Moon', 26, 0.09, body=False)
 
     # Rows of small lamps along the edges: the galleries' rails, the crane's bridge, the stage's
@@ -309,9 +309,9 @@ def build(k):
         k.speaker_stack((side * 15.2, 0, STAGE_FRONT + 0.6), side * -0.15, 3, 2)
         k.speaker_stack((side * 16.6, 0, STAGE_FRONT + 0.2), side * -0.2, 3, 0)
         k.road_cases((side * 20.5 - (3.5 if side > 0 else 0), 0, BACK + 1.2), 0, 5, side + 3)
-        k.road_cases((side * 22.5, 0, 36), math.pi / 2 * side, 4, side + 7)
+        k.road_cases((side * 22.5, 0, FRONT - 6), math.pi / 2 * side, 4, side + 7)
         k.line_array((side * 16.5, 11.6, STAGE_FRONT + 0.3), side * -0.15, 9, 1.0, 2.2)
-    k.foh((0, 0, 24), math.pi, roof=False)
+    k.foh((0, 0, 30), math.pi, roof=False)
     # Cold sparks along the deck's front, CO2 jets, confetti from the wings.
     for x in (-11, -6.5, -2.2, 2.2, 6.5, 11):
         k.box('Dark', (0.4, 0.15, 0.4), (x, DECK + 0.075, STAGE_FRONT - 0.3), bevel=0.02)
@@ -327,7 +327,7 @@ def build(k):
         'ao': 2.5,
         'views': {
             'front': ((0, 3.2, 30), (0, 5.5, -14), 70),
-            'hero': ((9, 10.5, 39), (-2, 4, -10), 60),
+            'hero': ((4.5, 7.2, 68), (-1, 4.5, -10), 56),
             'stage': ((0, 4, 2), (0, 3, -12), 70),
             'booth': ((1.6, 4.0, DJ_FRONT + 2.4), (0, DECK + DJ_RISE + 0.9, DJ_FRONT - 1), 56),
             'gallery': ((-HALF + 2.2, GALLERY_Y + 1.7, 30), (2, 3, -8), 70),
