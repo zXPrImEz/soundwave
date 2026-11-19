@@ -1,7 +1,14 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VENUE, isVenueChoice, menuVenue, resolveVenue, VENUE_IDS, venueName } from '../src/render/venues/catalog';
+import { crowdAt } from '../src/render/venues/kit/crowd';
 import { MIN_FLASH_GAP, StrobeGate } from '../src/render/venues/kit/strobe';
-import { LED_LOOKS, LedScreen } from '../src/render/venues/kit/led';
+import * as THREE from 'three';
+import { LED_LOOKS, LedScreen, pickLook } from '../src/render/venues/kit/led';
+import { Lasers, cone } from '../src/render/venues/kit/lasers';
+import type { ModelData } from '../src/render/venues/kit/model';
+import { PLAYERS, liftHeight, type LiftFrame } from '../src/render/venues/kit/podiums';
+import { laserPrograms } from '../src/render/venues/warehouseLasers';
 import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
@@ -61,6 +68,107 @@ describe('led screens', () => {
       screen.next(bar);
       screen.update(0);
       expect(screen.material.uniforms.uLookB.value).toBe(LED_LOOKS[(['bars', 'grid', 'rings'] as const)[Math.floor(bar) % 3]]);
+    }
+  });
+
+  it('play their own looks, and the drop looks in a peak', () => {
+    const own = ['bars', 'grid'] as const;
+    const drops = ['spectrum', 'vortex', 'strobe'] as const;
+    expect(pickLook(own, drops, 3, false)).toBe('grid');
+    expect(pickLook(own, drops, 4.5, true)).toBe('vortex');
+    expect(pickLook(own, [], 1, true)).toBe('grid');
+    expect(pickLook(own, drops, -1, false)).toBe('grid');
+  });
+});
+
+describe('lasers', () => {
+  it('turn a cone of beams round its axis at the angle asked', () => {
+    const out = new Lasers(16);
+    const from = new THREE.Vector3(0, 10, 0);
+    cone(out, from, 8, 0.4, -1.2, 0.3, 10, [new THREE.Color(1, 0, 0)], 1);
+    out.end(720);
+    const b = out.mesh.geometry.getAttribute('aB') as THREE.InstancedBufferAttribute;
+    const axis = new THREE.Vector3(Math.sin(0.4) * Math.cos(-1.2), Math.sin(-1.2), Math.cos(0.4) * Math.cos(-1.2));
+    expect(out.mesh.geometry.instanceCount).toBe(8);
+    for (let i = 0; i < 8; i++) {
+      const dir = new THREE.Vector3().fromBufferAttribute(b, i).sub(from);
+      expect(dir.length()).toBeCloseTo(10, 5);
+      expect(dir.angleTo(axis)).toBeCloseTo(0.3, 5);
+    }
+  });
+
+  it('play the sheet alone when calm, more programmes as the show builds, everything in overdrive', () => {
+    expect(laserPrograms('calm', 3, 0)).toEqual(['sheet']);
+    const groove = new Set(Array.from({ length: 8 }, (_, p) => laserPrograms('groove', p, 0)[1]));
+    expect(groove.size).toBe(4);
+    for (let p = 0; p < 8; p++) {
+      const peak = laserPrograms('peak', p, 0);
+      expect(peak).toHaveLength(3);
+      expect(new Set(peak).size).toBe(3);
+    }
+    expect(laserPrograms('groove', 0, 1)).toEqual(expect.arrayContaining(['tunnel', 'web', 'cones', 'storm']));
+    expect(laserPrograms('peak', -5, 0)).toHaveLength(3);
+  });
+});
+
+describe('crowds on spots', () => {
+  // A ring of seats round a stage at the centre, one storey up.
+  const seats = Array.from({ length: 400 }, (_, i) => [Math.sin(i / 64) * 40, 3, Math.cos(i / 64) * 40]);
+  const area = { spots: seats, fill: 1, face: (): [number, number] => [0, 0], jitter: 0.1, wander: 0 };
+
+  it('takes every spot when full, on its floor, near the spot and facing the stage', () => {
+    const people = crowdAt(area, ['a', 'b'], 1, []);
+    expect(people.length).toBe(seats.length);
+    people.forEach((p, i) => {
+      expect(p.pos[1]).toBe(3);
+      expect(Math.hypot(p.pos[0] - seats[i][0], p.pos[2] - seats[i][2])).toBeLessThanOrEqual(0.1 * Math.SQRT2 + 1e-9);
+      // Facing the centre: the yaw's direction points from the person back to the origin.
+      expect(Math.sin(p.yaw) * -p.pos[0] + Math.cos(p.yaw) * -p.pos[2]).toBeCloseTo(Math.hypot(p.pos[0], p.pos[2]), 6);
+      expect(p.far).toBe(true);
+    });
+  });
+
+  it('thins out with the fill and the graphics share, and keeps room round a camera', () => {
+    const quarter = crowdAt({ ...area, fill: 0.5 }, ['a'], 0.5, []).length;
+    expect(quarter).toBeGreaterThan(seats.length * 0.15);
+    expect(quarter).toBeLessThan(seats.length * 0.35);
+    expect(crowdAt(area, ['a'], 0, [])).toEqual([]);
+    const cam: [number, number, number] = [seats[0][0], 4.7, seats[0][2]];
+    const people = crowdAt(area, ['a'], 1, [cam]);
+    expect(people.every((p) => Math.hypot(p.pos[0] - cam[0], p.pos[2] - cam[2]) >= 1.4)).toBe(true);
+    expect(people.some((p) => !p.far)).toBe(true);
+  });
+});
+
+describe('podiums', () => {
+  const frame = (energy: number, overdrive = 0): LiftFrame => ({ dt: 1 / 60, clock: 0, energy, overdrive });
+  /** Where a podium settles after a minute of the same music. */
+  const settle = (index: number, featured: number, f: LiftFrame) => {
+    let h = 0;
+    for (let i = 0; i < 3600; i++) h = liftHeight(h, 1.2, index, featured, f);
+    return h;
+  };
+
+  it('rise with busier music, the featured player highest, all the way in overdrive, never past their travel', () => {
+    expect(settle(1, 0.6, frame(0.9))).toBeGreaterThan(settle(1, 0.6, frame(0.2)));
+    expect(settle(1, 1, frame(0.6))).toBeGreaterThan(settle(1, 0.4, frame(0.6)));
+    expect(settle(1, 0.4, frame(0.3, 1))).toBeCloseTo(1.2, 3);
+    for (const e of [0, 0.5, 1]) expect(settle(2, 1, frame(e, 1))).toBeLessThanOrEqual(1.2);
+  });
+
+  it('glide rather than jump', () => {
+    expect(liftHeight(0, 1.2, 0, 1, frame(1, 1))).toBeLessThan(0.02);
+  });
+
+  it('stand under every player in every modelled venue, the marks on their lids', () => {
+    for (const id of VENUE_IDS.filter((v) => v !== 'moonrise')) {
+      const data = JSON.parse(readFileSync(`public/stage/${id}/venue.json`, 'utf8')) as ModelData;
+      for (const part of PLAYERS) {
+        const p = data.podiums?.[part];
+        expect(p, `${id} ${part}`).toBeDefined();
+        expect(data.marks[part][1]).toBeGreaterThan(p?.floor ?? 0);
+        expect(p?.travel).toBeGreaterThan(0);
+      }
     }
   });
 });

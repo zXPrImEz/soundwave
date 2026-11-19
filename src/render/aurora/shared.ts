@@ -22,6 +22,9 @@ export const shared = {
   uLow: { value: 0.2 },
   uMid: { value: 0.2 },
   uHigh: { value: 0.2 },
+  /** How far into a peak the show is, 0..1 (eased; overdrive counts as one), and overdrive alone. */
+  uPeak: { value: 0 },
+  uDrive: { value: 0 },
   uKey: { value: new THREE.Color(1, 0.45, 0.8) },
   uAccent: { value: new THREE.Color(0.4, 0.9, 1) },
   uWash: { value: new THREE.Color(0.25, 0.2, 1) },
@@ -46,8 +49,9 @@ export const shared = {
   /** Lights on the far shore, mirrored by the lake. */
   uShore: { value: Array.from({ length: 8 }, () => new THREE.Vector3(0, -1000, 0)) },
   uShoreCol: { value: Array.from({ length: 8 }, () => new THREE.Color(0, 0, 0)) },
-  /** The last firework: where it burst and how bright it still is. */
+  /** The last firework: where it burst and how bright it still is, and the colour of its light. */
   uBurst: { value: new THREE.Vector4(0, 60, -40, 0) },
+  uBurstCol: { value: new THREE.Color(0, 0, 0) },
   /** How strongly the flame jets are burning, 0..1: they light what stands near. */
   uFire: { value: 0 },
   /** Overall brightness of the screens. */
@@ -117,6 +121,7 @@ uniform vec3 uMoonCol;
 uniform vec3 uShore[8];
 uniform vec3 uShoreCol[8];
 uniform vec4 uBurst;
+uniform vec3 uBurstCol;
 uniform float uFire;
 uniform vec4 uLight[${LIGHTS}];
 uniform vec3 uLightCol[${LIGHTS}];
@@ -160,9 +165,12 @@ vec3 fieldPools(vec2 p) {
   return sum * (0.3 + 0.7 * uEnergy);
 }
 
-/** What a venue's own lights (uLight) and a flash give a surface at p facing n, wrapped a little. */
+/** What a venue's own lights (uLight), a flash and a firework's burst give a surface at p facing n, wrapped a little. */
 vec3 roomLights(vec3 p, vec3 n) {
   vec3 sum = vec3(uFlash * 0.9);
+  vec3 bd = uBurst.xyz - p;
+  float bl = length(bd);
+  sum += uBurstCol * uBurst.w / (1.0 + bl * bl / 3600.0) * max(0.0, dot(n, bd / max(bl, 1e-3)) * 0.6 + 0.4);
   for (int i = 0; i < ${LIGHTS}; i++) {
     vec3 d = uLight[i].xyz - p;
     float l = length(d);

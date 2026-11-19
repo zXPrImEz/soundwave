@@ -8,6 +8,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { duskSky } from './kit/sky';
@@ -169,6 +170,8 @@ export async function buildMainstage(ctx: VenueContext): Promise<Venue> {
   const arch = new THREE.Vector3(...(data.sources['laser.arch']?.[0] ?? [0, 26, -30]));
 
   const { band, players } = bandOn(data, ctx.cast, ctx.focus);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = data.marks.dj;
   const shots = [
     shot('front', [0, 7, 70], [0, 22, -24], 80, 'push', 8, 'all', 3),
@@ -191,12 +194,12 @@ export async function buildMainstage(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-96, -7, 96, 150],
-      step: 0.92,
+      step: 0.9,
       density: (x, z) => {
         if (!clear(x, z) || Math.abs(x) > 52 + (z + 7) * 0.55) return 0;
         // The pit round the catwalk and its platform.
         if (Math.abs(x) <= 7.4 && z < 8.6) return 0;
-        return Math.max(0.25, 1.08 - Math.hypot(x, z + 8) / 160);
+        return Math.max(0.42, 1.1 - Math.hypot(x, z + 8) / 175);
       },
       face: (x) => [x * 0.3, -20],
     },
@@ -225,12 +228,14 @@ export async function buildMainstage(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(0.9, 30);
     shared.uGlowFall.value = 0.0012;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
     const s = f.show;
     const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
+    podiums.update(f);
     // In the menus the light hovers at dusk; in a song the sun goes down as it plays.
     dusk.value = menu ? 0.6 + 0.1 * Math.sin(f.time * 0.02) : Math.min(1, 0.15 + f.time / SUNSET);
     const night = 0.35 + 0.65 * dusk.value;
@@ -460,6 +465,7 @@ export async function buildMainstage(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

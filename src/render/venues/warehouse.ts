@@ -5,16 +5,18 @@ import { makeBand } from '../aurora/figures';
 import { shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
 import { dj, fillCrowd } from './kit/crowd';
-import { Lasers, fan } from './kit/lasers';
+import { Lasers } from './kit/lasers';
 import { Bulbs } from './kit/bulbs';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { StrobeGate } from './kit/strobe';
 import { glow, modelSurface } from './kit/surface';
 import { loadScans } from './kit/textures';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
+import { WarehouseLasers } from './warehouseLasers';
 
 /** The hall (as tools/stage/venues/warehouse.py builds it): half its width, back, front, height. */
 const HALF = 25;
@@ -159,15 +161,23 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const barHeight = new Float32Array(barSpots.length).fill(10);
   const strobeLevel = new Float32Array(strobes.count);
 
-  const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 90 : 220);
+  const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 120 : 360);
   root.add(lasers.mesh);
   owned.push(lasers);
   const src = (name: string) => (data.sources[name] ?? []).map((p) => new THREE.Vector3(...p));
-  const sources = {
-    deck: src('laser.deck'),
-    truss: src('laser.truss'),
-    wall: src('laser.wall')[0] ?? new THREE.Vector3(0, 6.2, BACK + 2.6),
-  };
+  const laserShow = new WarehouseLasers(
+    lasers,
+    {
+      deck: src('laser.deck'),
+      truss: src('laser.truss'),
+      wall: src('laser.wall'),
+      back: src('laser.back'),
+      side: src('laser.side'),
+      spine: src('laser.spine'),
+      rear: src('laser.rear'),
+    },
+    menu,
+  );
 
   const fireworks: FireworkSpec[] = (data.sources.sparks ?? []).map((origin) => ({
     origin,
@@ -182,6 +192,8 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const band: Record<string, Vec3> = { vox: marks.vox, lead: marks.lead, bass: marks.bass, drums: marks.drums };
   const players = makeBand({ band }, ctx.cast.band.data.band ?? {}, ctx.focus);
   for (const p of players) p.yaw = Math.atan2(-p.pos[0] * 0.18, 10);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = marks.dj;
 
   const shots = [
@@ -206,12 +218,12 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-HALF + GALLERY + 0.6, STAGE_FRONT + 3.4, HALF - GALLERY - 0.6, FRONT - 1.5],
-      step: 0.72,
+      step: 0.66,
       density: (x, z) => {
         if (PILLARS.some(([px, pz]) => Math.hypot(x - px, z - pz) < 1.1)) return 0;
         if (Math.abs(x) < 3 && Math.abs(z - 30) < 2.2) return 0;
         const back = (z - STAGE_FRONT) / (FRONT - STAGE_FRONT);
-        return Math.max(0.2, 1.05 - back * 0.85 - Math.max(0, Math.abs(x) - 15) * 0.05);
+        return Math.max(0.45, 1.08 - back * 0.7 - Math.max(0, Math.abs(x) - 15) * 0.04);
       },
       face: (x) => [x * 0.3, -12],
     },
@@ -229,8 +241,8 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
         {
           bounds:
             side < 0 ? [-HALF + 0.5, -1.5, -HALF + GALLERY - 0.35, FRONT - 4.5] : [HALF - GALLERY + 0.35, -1.5, HALF - 0.5, FRONT - 4.5],
-          step: 0.8,
-          density: (x) => (Math.abs(Math.abs(x) - (HALF - GALLERY + 0.6)) < 1.2 ? 0.85 : 0.25),
+          step: 0.72,
+          density: (x) => (Math.abs(Math.abs(x) - (HALF - GALLERY + 0.6)) < 1.2 ? 0.95 : 0.4),
           face: (_, z) => [0, Math.min(z, -6)],
           ground: () => GALLERY_Y,
           wander: 0.4,
@@ -251,13 +263,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const gate = new StrobeGate();
   let lastSub = -1;
   let flash = 0;
-  let laserLook = 0;
-  const tmpA = new THREE.Vector3();
-  const tmpB = new THREE.Vector3();
   const dummy = new THREE.Object3D();
-  const c1 = new THREE.Color();
-  const c2 = new THREE.Color();
-  const green = new THREE.Color(0.15, 1, 0.3);
 
   const bind = () => {
     shared.uGlowPos.value.set(0, 6.2, BACK + 3);
@@ -272,14 +278,17 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     L[2].set(HALF - 0.8, 9, -8, 9);
     L[3].set(HALF - 0.8, 9, 40, 9);
     for (let i = 0; i < 4; i++) LC[i].copy(amber).multiplyScalar(0.55);
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
     const peak = s.level === 'peak' || s.overdrive > 0.5;
     if (f.beat === 'downbeat') {
-      if (s.bar % 8 === 0) wall.next(s.bar / 8);
+      // In a peak the wall changes every other bar.
+      if (s.bar % (peak ? 2 : 8) === 0) wall.next(s.bar / (peak ? 2 : 8));
       if (s.bar % 4 === 0) booth.next(s.bar / 4);
       if (s.bar % 4 === 1) column.next(s.bar / 4);
       if (s.bar % 4 === 2) lip.next(s.bar / 4);
@@ -358,81 +367,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     L[7].set(0, 10.4, STAGE_FRONT, 14);
     LC[7].setScalar(flash * 1.4);
 
-    // Lasers: a sheet over the heads, fans and scans as it builds, the tunnel at a peak.
-    lasers.begin();
-    if (f.beat === 'downbeat' && s.bar % 4 === 0) laserLook++;
-    const t = f.time;
-    const lv = (menu ? 0.5 : 1) * (0.35 + 0.65 * busy) * 0.45;
-    c1.copy(f.key).lerp(WHITE, 0.15);
-    c2.copy(f.accent);
-    const deck = sources.deck;
-    if ((s.level !== 'calm' || menu) && deck.length > 1) {
-      const roll = Math.sin(t * 0.7) * 0.05;
-      fan(lasers, deck[0], 22, 0.62, 0.09 + 0.03 * Math.sin(t * 0.5), 1.3, 46, laserLook % 2 ? green : c1, lv * 1.4, roll);
-      fan(
-        lasers,
-        deck[deck.length - 1],
-        22,
-        -0.62,
-        0.09 + 0.03 * Math.sin(t * 0.5 + 1),
-        1.3,
-        46,
-        laserLook % 2 ? green : c1,
-        lv * 1.4,
-        -roll,
-      );
-    }
-    if (s.level === 'groove') {
-      const look = laserLook % 3;
-      if (look === 0)
-        sources.truss.forEach((p, k) =>
-          fan(
-            lasers,
-            p,
-            9,
-            Math.sin(t * 0.8 + k) * 0.5,
-            -0.42 + 0.1 * Math.sin(t + k),
-            0.8,
-            40,
-            k % 2 ? c1 : c2,
-            lv * 1.3,
-            Math.PI / 2 + Math.sin(t * 0.6 + k) * 0.3,
-          ),
-        );
-      else if (look === 1)
-        deck.forEach((p, k) => {
-          const jump = hash(Math.floor(f.clock) * 7 + k);
-          fan(lasers, p, 3, (jump - 0.5) * 1.2, 0.05 + 0.25 * hash(jump * 13), 0.18, 45, k % 2 ? c2 : c1, lv * 1.6);
-        });
-      else
-        sources.truss.forEach((p, k) =>
-          fan(lasers, p, 14, (k - 1.5) * 0.25, -0.2 + 0.12 * Math.sin(t * 1.3 + k), 1.0, 42, c2, lv * 1.2, Math.sin(t * 0.4) * 0.4),
-        );
-    }
-    if (peak) {
-      const n = 20;
-      for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2 + t * 0.9;
-        const r = 0.2 + 0.06 * Math.sin(t * 1.7);
-        tmpA
-          .set(Math.cos(a) * r, Math.sin(a) * r * 0.75 + 0.06, 1)
-          .normalize()
-          .multiplyScalar(60)
-          .add(sources.wall);
-        lasers.add(sources.wall, tmpA, k % 2 ? c1 : c2, lv * 1.5);
-      }
-      if (s.bar % 2)
-        sources.truss.forEach((p, k) => {
-          const jump = hash(Math.floor(f.clock) * 5 + k);
-          tmpB
-            .set((jump - 0.5) * 1.4, -0.45, 1)
-            .normalize()
-            .multiplyScalar(40)
-            .add(p);
-          lasers.add(p, tmpB, c2, lv * 2 * (0.4 + 0.6 * f.pulse));
-        });
-    }
-    lasers.end(f.height);
+    laserShow.update(f);
   };
 
   const beam = (group: string, i: number, f: VenueFrame): BeamPose | undefined => {
@@ -503,12 +438,9 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }
 
 const WHITE = new THREE.Color(1, 1, 1);
-function hash(n: number): number {
-  const x = Math.sin(n * 127.1) * 43758.5453;
-  return x - Math.floor(x);
-}

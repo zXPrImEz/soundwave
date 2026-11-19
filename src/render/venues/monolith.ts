@@ -8,6 +8,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { duskSky } from './kit/sky';
@@ -116,6 +117,8 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
   const laserHeads = (data.sources['laser.band'] ?? []).map((p) => new THREE.Vector3(...p));
 
   const { band: marks, players } = bandOn(data, ctx.cast, ctx.focus);
+  const podiums = new Podiums(root, data.podiums, marks, players);
+  owned.push(podiums);
   const deck = data.deck;
   const shots = [
     shot('front', [0, 5.5, 42], [0, 10, -18], 76, 'push', 6, 'all', 3),
@@ -139,11 +142,11 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-75, -5, 75, 108],
-      step: 0.92,
+      step: 0.88,
       density: (x, z) => {
         if (!clear(x, z) || Math.abs(x) > 44 + (z + 5) * 0.45) return 0;
         if (Math.abs(x - 2.2) < 0.7 && z < 47) return 0;
-        return Math.max(0.25, 1.08 - Math.hypot(x, z + 5) / 135);
+        return Math.max(0.4, 1.1 - Math.hypot(x, z + 5) / 150);
       },
       face: (x) => [x * 0.3, -16],
     },
@@ -159,10 +162,12 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     ...fillCrowd(
       {
         bounds: [tr.x0 + 0.6, tr.z0 - tr.steps * tr.depth + 0.3, tr.x1 - 0.6, tr.z0 - 0.3],
-        step: 0.85,
-        density: (_, z) => {
+        step: 0.7,
+        density: (x, z) => {
+          // The stairs up from step to step (see tools/stage/venues/monolith.py) stay free.
+          if ([-15, 0, 15].some((s) => Math.abs(x - s) < 1.3)) return 0;
           const f = (tr.z0 - z) / tr.depth;
-          return f - Math.floor(f) > 0.25 && f - Math.floor(f) < 0.85 ? 0.8 : 0;
+          return f - Math.floor(f) > 0.2 && f - Math.floor(f) < 0.85 ? 0.95 : 0;
         },
         face: (x) => [x * 0.5, 30],
         ground: (_, z) => tr.y0 + Math.min(tr.steps - 1, Math.floor((tr.z0 - z) / tr.depth)) * tr.rise,
@@ -195,9 +200,11 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(2.4, 30);
     shared.uGlowFall.value = 0.0014;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
@@ -325,6 +332,7 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

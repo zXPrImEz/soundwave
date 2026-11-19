@@ -7,6 +7,7 @@ import { dj, fillCrowd } from './kit/crowd';
 import { Lasers, fan } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { bandShots, shot } from './kit/shots';
 import { StrobeGate } from './kit/strobe';
@@ -95,6 +96,8 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
   const corners = (data.sources.laser ?? []).map((p) => new THREE.Vector3(...p));
 
   const { band, players } = bandOn(data, ctx.cast, ctx.focus, (p) => [p[0] * 0.6, p[2] + 6]);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = data.marks.dj;
   const shots = [
     shot('front', [0.2, 1.95, 6.6], [0, 1.3, 0.5], 86, 'truck', 0.8, 'all', 3),
@@ -112,13 +115,13 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-R.half + 0.6, R.z0 + 0.6, R.half - 0.6, R.z1 - 0.6],
-      step: 0.64,
+      step: 0.58,
       density: (x, z) => {
         if (!clear(x, z)) return 0;
         if (Object.values(band).some((p) => Math.hypot(x - p[0], z - p[2]) < 1)) return 0;
         // A lane before the band stays open, so they are seen.
         if (Math.abs(x) < 4.2 && z > 0.6 && z < 3.6) return 0;
-        return Math.max(0.5, 1.1 - Math.hypot(x, z) / 16);
+        return Math.max(0.7, 1.15 - Math.hypot(x, z) / 18);
       },
       face: () => [0, 1.5],
       wander: 0.8,
@@ -147,9 +150,11 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(0.5, 5);
     shared.uGlowFall.value = 0.06;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const busy = busyOf(f.energy);
     const peak = s.level === 'peak' || s.overdrive > 0.5;
@@ -257,6 +262,7 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

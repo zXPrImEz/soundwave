@@ -4,10 +4,11 @@ import { COMMON, OUTPUT, shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
 import { Bulbs } from './kit/bulbs';
 import { bandOn, busyOf, fountains } from './kit/common';
-import { dj, fillCrowd } from './kit/crowd';
+import { crowdAt, dj, fillCrowd } from './kit/crowd';
 import { Lasers } from './kit/lasers';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel, type ModelData } from './kit/model';
+import { Podiums } from './kit/podiums';
 import { gearRoles } from './kit/roles';
 import { shot } from './kit/shots';
 import { glow, modelSurface, surface } from './kit/surface';
@@ -123,6 +124,8 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
 
   // The band faces out from the island toward the side they stand on.
   const { band, players } = bandOn(data, ctx.cast, ctx.focus, (p) => [p[0] * 3, p[2] * 3 + 6]);
+  const podiums = new Podiums(root, data.podiums, band, players);
+  owned.push(podiums);
   const djAt = data.marks.dj;
 
   const shots = [
@@ -131,7 +134,7 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     shot('crowd', [10, 2.2, 15], [0, 5, 0], 82, 'orbit', 0.3, 'busy', 2),
     shot('close', [1.5, 3.6, 12.5], [0, 3, 2], 62, 'orbit', 0.25, 'busy', 1.6),
     shot('aerial', [0.5, 27, 20], [0, 0, -4], 96, 'orbit', 0.9, 'all', 1),
-    shot('stands', [-30, 14, 40], [0, 8, 0], 68, 'orbit', 0.3, 'all', 1.2),
+    shot('stands', [-30, 15.6, 40], [0, 8, 0], 68, 'orbit', 0.3, 'all', 1.2),
     shot('wide-left', [-26, 8, 18], [0, 10, 0], 78, 'orbit', 0.4, 'all', 1.2),
     shot('low-gate', [0, 2.6, 9.4], [0, 16, 0], 96, 'orbit', 0.5, 'peak', 1),
     shot('rig', [0, 9, 26], [0, 17, 0], 78, 'orbit', 0.5, 'peak', 1),
@@ -160,12 +163,12 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-C.outer, -C.outer, C.outer, C.outer],
-      step: 0.84,
+      step: 0.74,
       density: (x, z) => {
         const r = Math.hypot(x, z);
         if (r < C.inner || r > C.outer) return 0;
         if (C.obstacles.some((o) => Math.abs(x - o.x) < o.w / 2 + 0.3 && Math.abs(z - o.z) < o.d / 2 + 0.3)) return 0;
-        return Math.max(0.35, 1.05 - (r - C.inner) / 40);
+        return Math.max(0.55, 1.08 - (r - C.inner) / 45);
       },
       face: () => [0, 0],
     },
@@ -175,31 +178,17 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     sync,
     53,
   );
-  // People in the stands, on their feet before their seats; the stairways and the cross aisle stay free.
+  // The stands, full all round: everyone on their feet before their seat, and more pressed
+  // together along the front of each tier. The seats leave the stairways and tunnel mouths free.
+  const seatAt = data.instances.seat ?? [];
+  const before = (inward: number) =>
+    seatAt.map(([x, y, z]) => {
+      const k = 1 - inward / Math.hypot(x, z);
+      return [x * k, y, z * k];
+    });
   audience.push(
-    ...fillCrowd(
-      {
-        bounds: [-outer, -outer, outer, outer],
-        step: 0.72,
-        density: (x, z) => {
-          const r = Math.hypot(x, z);
-          if (r < T.r0 + 0.3 || r > outer - 0.3) return 0;
-          const f = (r - T.r0) / T.depth;
-          if (Math.floor(f) === T.crossAisle) return 0;
-          const a = Math.atan2(x, z);
-          if (data.aisles.some((s) => Math.abs(Math.atan2(Math.sin(a - s), Math.cos(a - s))) * r < 1.1)) return 0;
-          return f - Math.floor(f) > 0.45 && f - Math.floor(f) < 0.9 ? 0.95 : 0;
-        },
-        face: () => [0, 0],
-        ground: (x, z) => tierHeight(Math.hypot(x, z)),
-        wander: 0.3,
-      },
-      ctx.characters,
-      share,
-      [],
-      sync,
-      59,
-    ),
+    ...crowdAt({ spots: before(0.4), fill: 0.97, face: () => [0, 0], jitter: 0.06, wander: 0.3 }, ctx.characters, share, [], sync, 59),
+    ...crowdAt({ spots: before(1.05), fill: 0.55, face: () => [0, 0], jitter: 0.12, wander: 0.6 }, ctx.characters, share, [], sync, 61),
   );
   if (djAt) audience.push(dj(ctx.characters, djAt, 0));
 
@@ -219,9 +208,11 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     shared.uGlowLight.value.set(2.4, 26);
     shared.uGlowFall.value = 0.003;
     shared.uBall.value.w = 0;
+    podiums.bind();
   };
 
   const update = (f: VenueFrame) => {
+    podiums.update(f);
     const s = f.show;
     const t = f.time;
     const busy = busyOf(f.energy);
@@ -367,6 +358,7 @@ export async function buildArena(ctx: VenueContext): Promise<Venue> {
     bind,
     update,
     beam,
+    cameraLift: (shot) => podiums.cameraLift(shot),
     dispose: () => owned.forEach((o) => o.dispose()),
   };
 }

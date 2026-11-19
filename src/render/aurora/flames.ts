@@ -10,8 +10,10 @@ const FULL = 0.32;
  * Flame jets: a row of projectors that each throw a column of fire a few metres high. A shot is a
  * sheet that turns to face the camera, and the fire is drawn on it: fuel runs for the first half of
  * the shot, so the front of the flame climbs fast, then the foot lets go and what is left rises and
- * burns out. The body is rolling noise, hottest and whitest in the core, orange to deep red at the
- * edges, and it is added to the picture so it glows.
+ * burns out. The body is turbulence riding on slower rolls, torn into tongues toward the top, and
+ * coloured by how hot it burns: white-yellow in the core, orange, deep red at the ragged edges, blue
+ * at the nozzle while the fuel runs, with the air around it glowing. It is added to the picture so
+ * it glows. (The embers and the smoke after a shot are particles: see pyro.ts.)
  */
 export class Flames {
   readonly mesh: THREE.Mesh;
@@ -57,31 +59,43 @@ export class Flames {
           float live = step(0.0, vAge) * step(vAge, 1.0);
           vec3 toCam = cameraPosition - aBase;
           vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
-          vec3 p = aBase + right * position.x * 3.6 * aShot.z + vec3(0.0, position.y * 10.5 * aShot.z, 0.0);
+          vec3 p = aBase + right * position.x * 4.6 * aShot.z + vec3(0.0, position.y * 10.5 * aShot.z, 0.0);
           gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0) * live;
         }`,
       fragmentShader: /* glsl */ `
         ${COMMON}
         varying vec2 vUv; varying float vAge; varying float vSeed;
+        float fbm3(vec2 p) { return 0.5 * vnoise(p) + 0.25 * vnoise(p * 2.03 + 17.3) + 0.125 * vnoise(p * 4.1 + 9.1); }
         void main() {
+          // x across the sheet (the flame itself is about half its width: room for the glow), y up it.
           float x = (vUv.x - 0.5) * 2.0;
           float y = vUv.y;
-          float t = uTime * 3.4 + vSeed;
+          float t = uTime + vSeed;
           float head = smoothstep(0.0, 0.2, vAge) * 1.08;
           float foot = smoothstep(0.42, 0.95, vAge) * 1.1;
-          float big = fbm(vec2(x * 1.6 + vSeed, y * 3.4 - t));
-          float fine = fbm(vec2(x * 4.2 - vSeed, y * 8.0 - t * 1.7));
+          // Big slow rolls bend the column and carry finer, faster licks along with them.
+          vec2 q = vec2(x * 1.2 + vSeed, y * 2.2 - t * 2.4);
+          vec2 warp = vec2(fbm3(q), fbm3(q * 1.4 + 5.2)) - 0.5;
+          float licks = fbm(vec2(x * 3.0, y * 5.5 - t * 4.6) + warp * 2.2);
           // the column leans and curls more the higher it gets
-          float bent = x + (big - 0.5) * 0.75 * (0.2 + y);
-          float width = mix(0.15, 0.6, smoothstep(0.0, 0.45, y)) * (1.0 - 0.75 * smoothstep(0.55, 1.0, y));
-          float d = clamp(1.0 - abs(bent) / max(width, 1e-3), 0.0, 1.0);
-          d *= smoothstep(head, head - 0.3, y) * smoothstep(foot - 0.05, foot + 0.2, y);
-          d *= smoothstep(0.15, 0.72, big * 0.6 + fine * 0.5 + d * 0.55 - y * 0.25);
-          d *= 1.0 - smoothstep(0.8, 1.0, vAge);
-          float heat = d * (1.15 - 0.55 * y);
-          vec3 col = vec3(1.0, 0.15, 0.02) * smoothstep(0.0, 0.35, heat) + vec3(0.9, 0.48, 0.05) * smoothstep(0.2, 0.7, heat)
-            + vec3(0.9, 0.85, 0.6) * smoothstep(0.6, 1.0, heat);
-          gl_FragColor = vec4(col * d * 2.0, 1.0);
+          float bent = x * 1.28 + warp.x * 1.1 * (0.15 + y);
+          float width = mix(0.16, 0.6, smoothstep(0.0, 0.4, y)) * (1.0 - 0.7 * smoothstep(0.5, 1.0, y));
+          float shape = 1.0 - abs(bent) / max(width, 1e-3);
+          float live = smoothstep(head, head - 0.3, y) * smoothstep(foot - 0.05, foot + 0.2, y) * (1.0 - smoothstep(0.8, 1.0, vAge));
+          // How hot each point burns: hottest in the middle low down, torn into tongues by the licks higher up.
+          float heat = clamp(shape * 1.25 + (licks - 0.5) * (0.9 + 1.2 * y) - y * 0.55, 0.0, 1.0) * live;
+          vec3 col = vec3(0.85, 0.12, 0.02) * smoothstep(0.02, 0.3, heat)
+            + vec3(1.0, 0.42, 0.06) * smoothstep(0.2, 0.55, heat)
+            + vec3(0.9, 0.62, 0.22) * smoothstep(0.5, 0.8, heat)
+            + vec3(0.8, 0.7, 0.45) * smoothstep(0.82, 1.0, heat);
+          col *= smoothstep(0.0, 0.25, heat);
+          // At the nozzle, while the fuel runs, the gas burns blue-white before it catches.
+          float nozzle = (1.0 - smoothstep(0.0, 0.07, y)) * smoothstep(0.3, 0.9, shape) * (1.0 - smoothstep(0.3, 0.45, vAge)) * step(0.01, vAge);
+          col += vec3(0.35, 0.55, 1.0) * nozzle * 0.7;
+          // The air around the column glows with its heat.
+          float halo = exp(-bent * bent * 3.0) * (1.0 - 0.6 * y) * live * smoothstep(head, head - 0.5, y);
+          col += vec3(1.0, 0.32, 0.06) * halo * 0.1;
+          gl_FragColor = vec4(col * 0.9, 1.0);
           ${OUTPUT}
         }`,
     });

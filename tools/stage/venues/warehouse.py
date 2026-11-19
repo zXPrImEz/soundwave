@@ -173,22 +173,21 @@ def build(k):
     k.dj_booth((0, DECK + DJ_RISE, DJ_FRONT - 0.9), 0, 3.6, 'booth')
     k.mark('dj', (0, DECK + DJ_RISE, DJ_FRONT - 1.65))
 
-    # The band at the front: singer in the middle, guitar and bass either side with their amps,
-    # drums on a riser at the back left, wedges along the front.
-    band = {'vox': (0, DECK, -9.4), 'lead': (-4.6, DECK, -10.0), 'bass': (4.6, DECK, -10.0), 'drums': (-8.6, DECK + 0.5, -14.2)}
-    for name, at in band.items():
-        k.mark(name, at)
-    k.box('Black', (4, 0.5, 3.2), (-8.6, DECK + 0.25, -14), bevel=0.02)
-    k.floor('Fabric', 3.6, 2.8, (-8.6, DECK + 0.51, -14))
+    # The band at the front, each player on a podium the game lifts with the music: singer in the
+    # middle, guitar and bass either side with their amps, drums at the back left, wedges along
+    # the front.
+    k.podium('vox', (0, DECK, -10.1), 1.05, 1.05, 0.3, 0.9)
+    for side, part in ((-1, 'lead'), (1, 'bass')):
+        k.podium(part, (side * 4.6, DECK, -10.4), 1.0, 1.0, 0.3, 0.7, pedals=True)
+    k.podium('drums', (-8.6, DECK, -14.1), 1.8, 1.4, 0.5, 0.6, mic=False)
     for side in (-1, 1):
         k.amp((side * 6.0, DECK, -12.3), side * -0.15)
         k.amp((side * 6.9, DECK, -12.5), side * -0.2, 1)
     for x in (-4.6, -0.6, 0.6, 4.6):
         k.wedge((x, DECK, STAGE_FRONT - 0.7), 0)
-    k.mic_stand((0, DECK, -8.95), -0.15)
     # Cable runs across the deck.
     for x in (-4.6, 0, 4.6):
-        k.tube('Rubber', [(x, DECK + 0.02, -9.6), (x * 0.8, DECK + 0.02, -11.5), (x * 0.4, DECK + 0.02, -15.5)], 0.015, 5)
+        k.tube('Rubber', [(x * 0.8, DECK + 0.02, -11.5), (x * 0.4, DECK + 0.02, -15.5)], 0.015, 5)
 
     # The rig: the main truss over the stage's front on legs, the back truss over the wall.
     k.truss('Steel', (-14, 11, STAGE_FRONT - 0.5), (14, 11, STAGE_FRONT - 0.5), 0.55)
@@ -223,6 +222,27 @@ def build(k):
         k.box('Dark', (0.4, 0.25, 0.35), (x, 10.85, STAGE_FRONT - 0.3), bevel=0.02)
         k.source('laser.truss', (x, 10.7, STAGE_FRONT - 0.3))
     k.source('laser.wall', (0, 6.2, BACK + 2.6))
+    # More laser heads for the show: on top of the back truss, on the side walls between the
+    # windows, under the spine and high on the hall's back wall, aimed at the stage.
+    def laser_head(at, size=(0.4, 0.22, 0.4)):
+        k.box('Dark', size, at, bevel=0.02)
+        k.box('Glow.Green', (0.1, 0.04, 0.1), (at[0], at[1] - size[1] / 2 - 0.01, at[2]))
+    for x in (-8, -8 / 3, 8 / 3, 8):
+        k.box('Dark', (0.4, 0.22, 0.4), (x, 12.6, BACK + 3.2), bevel=0.02)
+        k.source('laser.back', (x, 12.75, BACK + 3.2))
+    for side in (-1, 1):
+        for z in (0, 16, 32, 48):
+            k.box('Steel', (0.5, 0.06, 0.3), (side * (HALF - 0.25), 8.82, z))
+            laser_head((side * (HALF - 0.4), 9.0, z), (0.3, 0.3, 0.4))
+            k.source('laser.side', (side * (HALF - 0.6), 9.0, z))
+    for z in (5, 21, 37, 53):
+        k.box('Steel', (2.6, 0.08, 0.08), (0, 12.6, z))
+        laser_head((0, 12.45, z))
+        k.source('laser.spine', (0, 12.25, z))
+    for x in (-4, 4):
+        k.box('Steel', (0.6, 0.06, 0.5), (x, 9.82, FRONT - 0.25))
+        laser_head((x, 10.0, FRONT - 0.3), (0.4, 0.3, 0.3))
+        k.source('laser.rear', (x, 10.0, FRONT - 0.5))
 
     # The light bars over the floor: trusses on chains from the roof, a moving head pair on each,
     # the bars themselves (repeated by the game, which winches them up and down) and their cables.
