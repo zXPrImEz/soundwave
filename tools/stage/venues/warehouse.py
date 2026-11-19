@@ -223,6 +223,27 @@ def build(k):
         k.box('Dark', (0.4, 0.25, 0.35), (x, 10.85, STAGE_FRONT - 0.3), bevel=0.02)
         k.source('laser.truss', (x, 10.7, STAGE_FRONT - 0.3))
     k.source('laser.wall', (0, 6.2, BACK + 2.6))
+    # More laser heads for the show: on top of the back truss, on the side walls between the
+    # windows, under the spine and high on the hall's back wall, aimed at the stage.
+    def laser_head(at, size=(0.4, 0.22, 0.4)):
+        k.box('Dark', size, at, bevel=0.02)
+        k.box('Glow.Green', (0.1, 0.04, 0.1), (at[0], at[1] - size[1] / 2 - 0.01, at[2]))
+    for x in (-8, -8 / 3, 8 / 3, 8):
+        k.box('Dark', (0.4, 0.22, 0.4), (x, 12.6, BACK + 3.2), bevel=0.02)
+        k.source('laser.back', (x, 12.75, BACK + 3.2))
+    for side in (-1, 1):
+        for z in (0, 16, 32, 48):
+            k.box('Steel', (0.5, 0.06, 0.3), (side * (HALF - 0.25), 8.82, z))
+            laser_head((side * (HALF - 0.4), 9.0, z), (0.3, 0.3, 0.4))
+            k.source('laser.side', (side * (HALF - 0.6), 9.0, z))
+    for z in (5, 21, 37, 53):
+        k.box('Steel', (2.6, 0.08, 0.08), (0, 12.6, z))
+        laser_head((0, 12.45, z))
+        k.source('laser.spine', (0, 12.25, z))
+    for x in (-4, 4):
+        k.box('Steel', (0.6, 0.06, 0.5), (x, 9.82, FRONT - 0.25))
+        laser_head((x, 10.0, FRONT - 0.3), (0.4, 0.3, 0.3))
+        k.source('laser.rear', (x, 10.0, FRONT - 0.5))
 
     # The light bars over the floor: trusses on chains from the roof, a moving head pair on each,
     # the bars themselves (repeated by the game, which winches them up and down) and their cables.

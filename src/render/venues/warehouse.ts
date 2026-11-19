@@ -5,7 +5,7 @@ import { makeBand } from '../aurora/figures';
 import { shared } from '../aurora/shared';
 import type { Vec3 } from '../stage/Director';
 import { dj, fillCrowd } from './kit/crowd';
-import { Lasers, fan } from './kit/lasers';
+import { Lasers } from './kit/lasers';
 import { Bulbs } from './kit/bulbs';
 import { LedScreen } from './kit/led';
 import { dressModel, instances, loadModel } from './kit/model';
@@ -15,6 +15,7 @@ import { StrobeGate } from './kit/strobe';
 import { glow, modelSurface } from './kit/surface';
 import { loadScans } from './kit/textures';
 import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
+import { WarehouseLasers } from './warehouseLasers';
 
 /** The hall (as tools/stage/venues/warehouse.py builds it): half its width, back, front, height. */
 const HALF = 25;
@@ -159,15 +160,23 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const barHeight = new Float32Array(barSpots.length).fill(10);
   const strobeLevel = new Float32Array(strobes.count);
 
-  const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 90 : 220);
+  const lasers = new Lasers(g.effects === 'off' ? 0 : g.effects === 'low' ? 120 : 360);
   root.add(lasers.mesh);
   owned.push(lasers);
   const src = (name: string) => (data.sources[name] ?? []).map((p) => new THREE.Vector3(...p));
-  const sources = {
-    deck: src('laser.deck'),
-    truss: src('laser.truss'),
-    wall: src('laser.wall')[0] ?? new THREE.Vector3(0, 6.2, BACK + 2.6),
-  };
+  const laserShow = new WarehouseLasers(
+    lasers,
+    {
+      deck: src('laser.deck'),
+      truss: src('laser.truss'),
+      wall: src('laser.wall'),
+      back: src('laser.back'),
+      side: src('laser.side'),
+      spine: src('laser.spine'),
+      rear: src('laser.rear'),
+    },
+    menu,
+  );
 
   const fireworks: FireworkSpec[] = (data.sources.sparks ?? []).map((origin) => ({
     origin,
@@ -251,13 +260,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const gate = new StrobeGate();
   let lastSub = -1;
   let flash = 0;
-  let laserLook = 0;
-  const tmpA = new THREE.Vector3();
-  const tmpB = new THREE.Vector3();
   const dummy = new THREE.Object3D();
-  const c1 = new THREE.Color();
-  const c2 = new THREE.Color();
-  const green = new THREE.Color(0.15, 1, 0.3);
 
   const bind = () => {
     shared.uGlowPos.value.set(0, 6.2, BACK + 3);
@@ -279,7 +282,8 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     const busy = Math.min(1, Math.max(0, (f.energy - 0.25) / 0.6));
     const peak = s.level === 'peak' || s.overdrive > 0.5;
     if (f.beat === 'downbeat') {
-      if (s.bar % 8 === 0) wall.next(s.bar / 8);
+      // In a peak the wall changes every other bar.
+      if (s.bar % (peak ? 2 : 8) === 0) wall.next(s.bar / (peak ? 2 : 8));
       if (s.bar % 4 === 0) booth.next(s.bar / 4);
       if (s.bar % 4 === 1) column.next(s.bar / 4);
       if (s.bar % 4 === 2) lip.next(s.bar / 4);
@@ -358,81 +362,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     L[7].set(0, 10.4, STAGE_FRONT, 14);
     LC[7].setScalar(flash * 1.4);
 
-    // Lasers: a sheet over the heads, fans and scans as it builds, the tunnel at a peak.
-    lasers.begin();
-    if (f.beat === 'downbeat' && s.bar % 4 === 0) laserLook++;
-    const t = f.time;
-    const lv = (menu ? 0.5 : 1) * (0.35 + 0.65 * busy) * 0.45;
-    c1.copy(f.key).lerp(WHITE, 0.15);
-    c2.copy(f.accent);
-    const deck = sources.deck;
-    if ((s.level !== 'calm' || menu) && deck.length > 1) {
-      const roll = Math.sin(t * 0.7) * 0.05;
-      fan(lasers, deck[0], 22, 0.62, 0.09 + 0.03 * Math.sin(t * 0.5), 1.3, 46, laserLook % 2 ? green : c1, lv * 1.4, roll);
-      fan(
-        lasers,
-        deck[deck.length - 1],
-        22,
-        -0.62,
-        0.09 + 0.03 * Math.sin(t * 0.5 + 1),
-        1.3,
-        46,
-        laserLook % 2 ? green : c1,
-        lv * 1.4,
-        -roll,
-      );
-    }
-    if (s.level === 'groove') {
-      const look = laserLook % 3;
-      if (look === 0)
-        sources.truss.forEach((p, k) =>
-          fan(
-            lasers,
-            p,
-            9,
-            Math.sin(t * 0.8 + k) * 0.5,
-            -0.42 + 0.1 * Math.sin(t + k),
-            0.8,
-            40,
-            k % 2 ? c1 : c2,
-            lv * 1.3,
-            Math.PI / 2 + Math.sin(t * 0.6 + k) * 0.3,
-          ),
-        );
-      else if (look === 1)
-        deck.forEach((p, k) => {
-          const jump = hash(Math.floor(f.clock) * 7 + k);
-          fan(lasers, p, 3, (jump - 0.5) * 1.2, 0.05 + 0.25 * hash(jump * 13), 0.18, 45, k % 2 ? c2 : c1, lv * 1.6);
-        });
-      else
-        sources.truss.forEach((p, k) =>
-          fan(lasers, p, 14, (k - 1.5) * 0.25, -0.2 + 0.12 * Math.sin(t * 1.3 + k), 1.0, 42, c2, lv * 1.2, Math.sin(t * 0.4) * 0.4),
-        );
-    }
-    if (peak) {
-      const n = 20;
-      for (let k = 0; k < n; k++) {
-        const a = (k / n) * Math.PI * 2 + t * 0.9;
-        const r = 0.2 + 0.06 * Math.sin(t * 1.7);
-        tmpA
-          .set(Math.cos(a) * r, Math.sin(a) * r * 0.75 + 0.06, 1)
-          .normalize()
-          .multiplyScalar(60)
-          .add(sources.wall);
-        lasers.add(sources.wall, tmpA, k % 2 ? c1 : c2, lv * 1.5);
-      }
-      if (s.bar % 2)
-        sources.truss.forEach((p, k) => {
-          const jump = hash(Math.floor(f.clock) * 5 + k);
-          tmpB
-            .set((jump - 0.5) * 1.4, -0.45, 1)
-            .normalize()
-            .multiplyScalar(40)
-            .add(p);
-          lasers.add(p, tmpB, c2, lv * 2 * (0.4 + 0.6 * f.pulse));
-        });
-    }
-    lasers.end(f.height);
+    laserShow.update(f);
   };
 
   const beam = (group: string, i: number, f: VenueFrame): BeamPose | undefined => {
@@ -508,7 +438,3 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
 }
 
 const WHITE = new THREE.Color(1, 1, 1);
-function hash(n: number): number {
-  const x = Math.sin(n * 127.1) * 43758.5453;
-  return x - Math.floor(x);
-}
