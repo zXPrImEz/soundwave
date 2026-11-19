@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VENUE, isVenueChoice, menuVenue, resolveVenue, VENUE_IDS, venueName } from '../src/render/venues/catalog';
 import { MIN_FLASH_GAP, StrobeGate } from '../src/render/venues/kit/strobe';
-import { LED_LOOKS, LedScreen } from '../src/render/venues/kit/led';
+import * as THREE from 'three';
+import { LED_LOOKS, LedScreen, pickLook } from '../src/render/venues/kit/led';
+import { Lasers, cone } from '../src/render/venues/kit/lasers';
+import { laserPrograms } from '../src/render/venues/warehouseLasers';
 import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
@@ -62,5 +65,44 @@ describe('led screens', () => {
       screen.update(0);
       expect(screen.material.uniforms.uLookB.value).toBe(LED_LOOKS[(['bars', 'grid', 'rings'] as const)[Math.floor(bar) % 3]]);
     }
+  });
+
+  it('play their own looks, and the drop looks in a peak', () => {
+    const own = ['bars', 'grid'] as const;
+    const drops = ['spectrum', 'vortex', 'strobe'] as const;
+    expect(pickLook(own, drops, 3, false)).toBe('grid');
+    expect(pickLook(own, drops, 4.5, true)).toBe('vortex');
+    expect(pickLook(own, [], 1, true)).toBe('grid');
+    expect(pickLook(own, drops, -1, false)).toBe('grid');
+  });
+});
+
+describe('lasers', () => {
+  it('turn a cone of beams round its axis at the angle asked', () => {
+    const out = new Lasers(16);
+    const from = new THREE.Vector3(0, 10, 0);
+    cone(out, from, 8, 0.4, -1.2, 0.3, 10, [new THREE.Color(1, 0, 0)], 1);
+    out.end(720);
+    const b = out.mesh.geometry.getAttribute('aB') as THREE.InstancedBufferAttribute;
+    const axis = new THREE.Vector3(Math.sin(0.4) * Math.cos(-1.2), Math.sin(-1.2), Math.cos(0.4) * Math.cos(-1.2));
+    expect(out.mesh.geometry.instanceCount).toBe(8);
+    for (let i = 0; i < 8; i++) {
+      const dir = new THREE.Vector3().fromBufferAttribute(b, i).sub(from);
+      expect(dir.length()).toBeCloseTo(10, 5);
+      expect(dir.angleTo(axis)).toBeCloseTo(0.3, 5);
+    }
+  });
+
+  it('play the sheet alone when calm, more programmes as the show builds, everything in overdrive', () => {
+    expect(laserPrograms('calm', 3, 0)).toEqual(['sheet']);
+    const groove = new Set(Array.from({ length: 8 }, (_, p) => laserPrograms('groove', p, 0)[1]));
+    expect(groove.size).toBe(4);
+    for (let p = 0; p < 8; p++) {
+      const peak = laserPrograms('peak', p, 0);
+      expect(peak).toHaveLength(3);
+      expect(new Set(peak).size).toBe(3);
+    }
+    expect(laserPrograms('groove', 0, 1)).toEqual(expect.arrayContaining(['tunnel', 'web', 'cones', 'storm']));
+    expect(laserPrograms('peak', -5, 0)).toHaveLength(3);
   });
 });
