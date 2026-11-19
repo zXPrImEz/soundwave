@@ -20,9 +20,7 @@ export type ScanName =
   | 'steel_paint'
   | 'steel_ribbed'
   | 'steel_tread'
-  | 'velvet'
   | 'carpet'
-  | 'leather'
   | 'grass'
   | 'ground'
   | 'asphalt';

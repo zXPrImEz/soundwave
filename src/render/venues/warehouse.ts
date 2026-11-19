@@ -19,13 +19,13 @@ import type { BeamPose, Venue, VenueContext, VenueFrame } from './types';
 /** The hall (as tools/stage/venues/warehouse.py builds it): half its width, back, front, height. */
 const HALF = 25;
 const BACK = -20;
-const FRONT = 42;
+const FRONT = 74;
 const STAGE_FRONT = -8;
 const GALLERY = 4.2;
 const GALLERY_Y = 5.2;
 const BAR_TOP = 13.6;
 const PILLARS: [number, number][] = [];
-for (const x of [-17, 17]) for (let z = -2; z <= 38; z += 8) PILLARS.push([x, z]);
+for (const x of [-17, 17]) for (let z = -2; z <= FRONT - 4; z += 8) PILLARS.push([x, z]);
 
 /**
  * Warehouse: a disused factory hall at night, modelled in Blender (tools/stage/venues/warehouse.py).
@@ -138,11 +138,11 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const owned: { dispose(): void }[] = [dressed, barGlow, strobeGlow];
 
   // Screens: the wall, the columns either side, the booth's front and the riser's lip.
-  const wall = new LedScreen([208, 76], ['tunnel', 'bars', 'stripes', 'grid', 'rings', 'kaleido'], 2.1, 1);
-  const column = new LedScreen([24, 84], ['stripes', 'bars', 'plasma', 'grid'], 1.9, 4);
-  const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 2.2, 2);
+  const wall = new LedScreen([208, 76], ['tunnel', 'bars', 'stripes', 'grid', 'rings', 'kaleido'], 1.4, 1);
+  const column = new LedScreen([24, 84], ['stripes', 'bars', 'plasma', 'grid'], 1.2, 4);
+  const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 1.6, 2);
   const lip = new LedScreen([260, 4], ['stripes', 'bars', 'rings'], 1.5, 3);
-  const cube = new LedScreen([40, 40], ['glyph', 'grid', 'glyph', 'stripes'], 2, 5);
+  const cube = new LedScreen([40, 40], ['glyph', 'grid', 'glyph', 'stripes'], 1.2, 5);
   const screens = { wall, column, booth, lip, cube };
   for (const [key, scr] of Object.entries(screens)) for (const mesh of dressed.screens.get(key) ?? []) mesh.material = scr.material;
   owned.push(wall, column, booth, lip, cube);
@@ -186,12 +186,12 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
 
   const shots = [
     shot('front', [0, 3.4, 31], [0, 5.5, -14], 70, 'push', 6, 'all', 3),
-    shot('hero', [9, 10.5, 39], [-2, 4, -10], 60, 'orbit', 0.12, 'all', 2),
+    shot('hero', [4.5, 7.2, 68], [-1, 4.5, -10], 56, 'orbit', 0.12, 'all', 2),
     shot('crowd', [6, 2.4, 12], [0, 4.8, -14], 78, 'truck', 3, 'busy', 2),
     shot('close', [2.4, 3.6, -3.4], [0, 2.6, -10], 58, 'pull', 2, 'busy', 1.6),
     shot('dj', [1.6, 4.2, djAt[2] + 4], [0, djAt[1] + 1.1, djAt[2]], 56, 'truck', 1.2, 'busy', 1.4),
     shot('gallery', [-HALF + 2.2, GALLERY_Y + 1.7, 30], [2, 3, -8], 70, 'truck', 4, 'all', 1.1),
-    shot('aerial', [0, 12.6, 36], [0, 2, -6], 74, 'push', 5, 'all', 1),
+    shot('aerial', [0, 12.6, 50], [0, 2, -6], 70, 'push', 5, 'all', 1),
     shot('wide-left', [-19, 5, 20], [2, 5, -12], 66, 'truck', 5, 'all', 1.2),
     shot('wide-right', [19, 5, 20], [-2, 5, -12], 66, 'truck', 5, 'all', 1.2),
     shot('low-gate', [0, 1.2, -5.4], [0, 7.5, -16], 90, 'crane', 1.2, 'peak', 1.2),
@@ -209,9 +209,9 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
       step: 0.72,
       density: (x, z) => {
         if (PILLARS.some(([px, pz]) => Math.hypot(x - px, z - pz) < 1.1)) return 0;
-        if (Math.abs(x) < 3 && Math.abs(z - 24) < 2.2) return 0;
+        if (Math.abs(x) < 3 && Math.abs(z - 30) < 2.2) return 0;
         const back = (z - STAGE_FRONT) / (FRONT - STAGE_FRONT);
-        return Math.max(0.35, 1.05 - back * 0.65 - Math.max(0, Math.abs(x) - 15) * 0.05);
+        return Math.max(0.2, 1.05 - back * 0.85 - Math.max(0, Math.abs(x) - 15) * 0.05);
       },
       face: (x) => [x * 0.3, -12],
     },
@@ -268,9 +268,9 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     shared.uGlowFall.value = 0.006;
     shared.uBall.value.w = 0;
     L[0].set(-HALF + 0.8, 9, -8, 9);
-    L[1].set(-HALF + 0.8, 9, 24, 9);
+    L[1].set(-HALF + 0.8, 9, 40, 9);
     L[2].set(HALF - 0.8, 9, -8, 9);
-    L[3].set(HALF - 0.8, 9, 24, 9);
+    L[3].set(HALF - 0.8, 9, 40, 9);
     for (let i = 0; i < 4; i++) LC[i].copy(amber).multiplyScalar(0.55);
   };
 
@@ -285,7 +285,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
       if (s.bar % 4 === 2) lip.next(s.bar / 4);
       if (s.bar % 8 === 4) cube.next(s.bar / 8);
     }
-    wall.level = 1.7 + 0.9 * f.barPulse + 0.6 * s.overdrive;
+    wall.level = 1.05 + 0.45 * f.barPulse + 0.4 * s.overdrive;
     for (const scr of Object.values(screens)) scr.update(f.dt);
     // The emblem before the wall breathes with the bass and burns white on the bar.
     emblemGlow.uniforms.uColor.value.copy(f.key).lerp(WHITE, 0.35 + 0.5 * f.barPulse);
@@ -320,7 +320,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
       // A chase runs back through the rows on the beat; the colours trade places every bar.
       const row = rows.indexOf(z);
       const chase = Math.pow(Math.max(0, Math.cos((f.clock * 0.5 - row * 0.18) * Math.PI)), 6);
-      const lvl = (0.12 + 0.88 * busy) * (0.3 + 0.7 * chase) * 2 + s.overdrive;
+      const lvl = (0.12 + 0.88 * busy) * (0.3 + 0.7 * chase) * 1.5 + 0.6 * s.overdrive;
       bars.setColorAt(i, color.copy((row + s.bar) % 2 ? f.key : f.accent).multiplyScalar(lvl));
     });
     for (const mesh of [bars, cases, cables]) mesh.instanceMatrix.needsUpdate = true;
@@ -339,12 +339,12 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     let sum = 0;
     for (let k = 0; k < strobeLevel.length; k++) {
       strobeLevel[k] *= Math.exp(-f.dt * 38);
-      strobes.setColorAt(k, color.setScalar(0.08 + strobeLevel[k] * 9));
+      strobes.setColorAt(k, color.setScalar(0.06 + strobeLevel[k] * 5));
       sum += strobeLevel[k];
     }
     strobes.instanceColor!.needsUpdate = true;
     flash = Math.max(flash * Math.exp(-f.dt * 25), sum / Math.max(1, strobeLevel.length));
-    shared.uFlash.value = flash * 0.35;
+    shared.uFlash.value = flash * 0.16;
 
     L[4].set(0, 6, BACK + 5, 16);
     LC[4]
@@ -356,7 +356,7 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     LC[5].copy(f.key).multiplyScalar(0.5 * (0.3 + busy));
     LC[6].copy(f.accent).multiplyScalar(0.5 * (0.3 + busy));
     L[7].set(0, 10.4, STAGE_FRONT, 14);
-    LC[7].setScalar(flash * 3);
+    LC[7].setScalar(flash * 1.4);
 
     // Lasers: a sheet over the heads, fans and scans as it builds, the tunnel at a peak.
     lasers.begin();
@@ -487,13 +487,13 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
     co2: data.sources.co2 ?? [],
     confetti: (data.sources.confetti ?? []).map((pos) => ({ pos, dir: [-Math.sign(pos[0]) * 0.25, 0.75, 0.6] as Vec3 })),
     looks: [
-      { key: [1, 0.08, 0.05], accent: [1, 0.92, 0.88], wash: [0.6, 0.02, 0.04] },
-      { key: [0.9, 0.95, 1], accent: [0.2, 0.55, 1], wash: [0.1, 0.2, 0.7] },
+      { key: [1, 0.06, 0.04], accent: [1, 0.5, 0.12], wash: [0.6, 0.02, 0.04] },
+      { key: [0.15, 0.45, 1], accent: [0.85, 0.9, 1], wash: [0.05, 0.12, 0.6] },
       { key: [1, 0.45, 0.08], accent: [1, 0.08, 0.1], wash: [0.5, 0.12, 0.02] },
       { key: [0.1, 0.9, 1], accent: [1, 0.1, 0.55], wash: [0.25, 0.05, 0.5] },
     ],
-    exposure: 0.95,
-    bloom: [0.24, 0.45, 0.95],
+    exposure: 0.85,
+    bloom: [0.17, 0.4, 1.05],
     hazeNear: [0.03, 0.03, 0.036],
     background: [0.004, 0.004, 0.006],
     sparkGravity: -7,

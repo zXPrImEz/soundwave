@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VENUE, isVenueChoice, menuVenue, resolveVenue, VENUE_IDS, venueName } from '../src/render/venues/catalog';
 import { MIN_FLASH_GAP, StrobeGate } from '../src/render/venues/kit/strobe';
+import { LED_LOOKS, LedScreen } from '../src/render/venues/kit/led';
 import { normalizeSettings } from '../src/game/settings';
 
 describe('venues', () => {
   it('knows every venue and the random choice', () => {
-    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'monolith', 'warehouse', 'arena', 'basement', 'bar']);
+    expect(VENUE_IDS).toEqual(['moonrise', 'mainstage', 'monolith', 'warehouse', 'arena', 'basement']);
     for (const v of VENUE_IDS) expect(isVenueChoice(v)).toBe(true);
     expect(isVenueChoice('random')).toBe(true);
     expect(isVenueChoice('stadium')).toBe(false);
@@ -14,7 +15,7 @@ describe('venues', () => {
   });
 
   it('builds the chosen venue, and a real one for random', () => {
-    expect(resolveVenue('bar', 3)).toBe('bar');
+    expect(resolveVenue('basement', 3)).toBe('basement');
     for (let seed = 0; seed < 50; seed++) {
       const v = resolveVenue('random', seed);
       expect(VENUE_IDS).toContain(v);
@@ -34,6 +35,8 @@ describe('venues', () => {
     expect(normalizeSettings({ venue: 'basement' }).venue).toBe('basement');
     expect(normalizeSettings({ venue: 'random' }).venue).toBe('random');
     expect(normalizeSettings({ venue: 'stadium' as never }).venue).toBe(DEFAULT_VENUE);
+    // The Bar was retired; a set stored with it opens in the default venue.
+    expect(normalizeSettings({ venue: 'bar' as never }).venue).toBe(DEFAULT_VENUE);
   });
 });
 
@@ -48,5 +51,16 @@ describe('strobes', () => {
     }
     for (let i = 1; i < fired.length; i++) expect(fired[i] - fired[i - 1]).toBeGreaterThanOrEqual(MIN_FLASH_GAP - 1e-9);
     for (let s = 0; s < 10; s++) expect(fired.filter((t) => t >= s && t < s + 1).length).toBeLessThanOrEqual(3);
+  });
+});
+
+describe('led screens', () => {
+  it('pick a real look for any bar count, whole or not', () => {
+    const screen = new LedScreen([4, 4], ['bars', 'grid', 'rings'], 1);
+    for (const bar of [0, 1, 1.25, 2.5, 7.75]) {
+      screen.next(bar);
+      screen.update(0);
+      expect(screen.material.uniforms.uLookB.value).toBe(LED_LOOKS[(['bars', 'grid', 'rings'] as const)[Math.floor(bar) % 3]]);
+    }
   });
 });

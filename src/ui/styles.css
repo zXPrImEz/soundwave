@@ -144,17 +144,6 @@
   --veil-mid: rgb(56 14 8 / 0.62);
   --veil-bottom: rgb(14 5 4 / 0.92);
 }
-:root[data-venue='bar'] {
-  --night: #130806;
-  --deep: #3a1810;
-  --violet: #c25a24;
-  --menu-glow: #6e2a12;
-  --veil-1: rgb(255 180 90 / 0.24);
-  --veil-2: rgb(255 60 140 / 0.24);
-  --veil-top: rgb(20 9 6 / 0.86);
-  --veil-mid: rgb(62 24 14 / 0.6);
-  --veil-bottom: rgb(18 8 6 / 0.9);
-}
 :root[data-input='touch'] {
   --target: 3rem;
   --bar-h: 4.5rem;

@@ -1,6 +1,6 @@
 """
 Builds one of the venues made in code-free Blender geometry (Mainstage, Warehouse, Arena 360,
-Basement, Bar) and exports it for the game:
+Basement) and exports it for the game:
 
     blender -b --factory-startup -P tools/stage/venues/build.py -- --venue warehouse \
         --out public/stage/warehouse [--preview local-audio/stage/warehouse.png --view front] [--save x.blend]
