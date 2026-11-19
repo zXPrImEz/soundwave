@@ -484,10 +484,15 @@ export class Stage {
       .multiply(cam.matrixWorldInverse);
     const left = [this.crowd.group, this.band.group, this.beams.group, ...(this.venue.mirror.hide ?? [])].filter((o) => o.visible);
     for (const o of left) o.visible = false;
+    // A mirror surface drawn into its own picture must not read that picture (a feedback loop the
+    // GPU refuses): in this pass it does not mirror.
+    shared.uMirrorOn.value = 0;
+    shared.uMirrorMap.value = null;
     this.renderer.setRenderTarget(mirror);
     this.renderer.render(this.scene, cam);
     this.renderer.setRenderTarget(null);
     for (const o of left) o.visible = true;
+    shared.uMirrorOn.value = 1;
     shared.uMirrorMap.value = mirror.texture;
   }
 
