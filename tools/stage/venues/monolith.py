@@ -3,7 +3,7 @@ Monolith: a brutalist open-air stage on the shore of a lake (see build.py).
 
 Four freestanding concrete portals stand in a row across the stage, each two square piers one
 behind the other under a lintel slab that cantilevers to the front and the back. One band of LEDs
-runs through all four, between the piers, with a service truss and a catwalk behind it. The deck
+runs through all four, between the piers, ending flush with the outer ones, with a service truss and a catwalk behind it. The deck
 lies before the portals: the band plays at its front, the DJ on a riser under the LED band. Behind
 the stage a tiered guest terrace stands on stilts over the water, reached by gangways from both
 sides; pontoons with lighting towers and a row of buoys float beyond it, and a dark treeline closes
@@ -31,7 +31,7 @@ PIER_Z = (PZ + GAP / 2 + PIER / 2, PZ - GAP / 2 - PIER / 2)   # front pier, back
 LINTEL_W, LINTEL_Z0, LINTEL_Z1 = 4.2, -11.2, -22.8
 LINTEL_Y, LINTEL_BACK, LINTEL_FRONT = PIER_TOP + 0.02, 18.8, 19.05
 DECK_FRONT, DECK_BACK, DECK_HALF, DECK = -10.0, -23.0, 35.0, 2.4
-BAND_Y, BAND_H, BAND_LEN, BAND_Z = 11.0, 4.0, 76.0, -16.2
+BAND_Y, BAND_H, BAND_LEN, BAND_Z = 11.0, 4.0, (PORTALS[-1] + PIER / 2) * 2, -16.2
 DJ_Z, DJ_RISE = -16.0, 1.0
 WATER = -0.4
 T_X, T_Z0, T_DEPTH, T_STEPS, T_Y0, T_RISE = 30.0, -26.0, 2.4, 5, 3.0, 0.8
@@ -202,19 +202,11 @@ def portal(k, px):
     # A row of small lamps along the front's lower edge.
     k.box('Dark', (LINTEL_W - 0.1, 0.05, 0.03), (px, LINTEL_Y + 0.14, LINTEL_Z0 + 0.015))
     bulbs(k, (x0 + 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.09), (x1 - 0.15, LINTEL_Y + 0.14, LINTEL_Z0 + 0.09), 0.15)
-    # On top: two heads into the sky, a rack of mortars between them.
+    # On top nothing stands out of the slab: two beams into the sky from heads let into it, and the
+    # fireworks leave from its top.
     for z, lean in ((-12.6, 0.12), (-21.4, -0.12)):
-        k.box('Dark', (0.7, 0.06, 0.6), (px, lintel_top(z) + 0.03, z))
-        k.moving_head((px, lintel_top(z) + 0.365, z), (px / 30 * 0.12, 1, lean), 'Sky', 150, 0.01)
-    top = lintel_top(PZ)
-    k.box('Dark', (1.3, 0.12, 0.7), (px, top + 0.06, PZ), bevel=0.015)
-    for i in range(5):
-        k.drum('Dark', 0.07, 0.5, (px - 0.5 + i * 0.25, top + 0.1, PZ), 10)
-    k.source('fireworks', (px, top + 0.65, PZ))
-    # A red obstruction light on the front corner, a lightning rod at the back.
-    k.box('Dark', (0.1, 0.1, 0.1), (px + 1.8, LINTEL_FRONT + 0.03, LINTEL_Z0 - 0.3))
-    k.box('Glow.Red', (0.07, 0.07, 0.07), (px + 1.8, LINTEL_FRONT + 0.11, LINTEL_Z0 - 0.3))
-    k.rod('Steel', (px - 1.8, LINTEL_BACK, LINTEL_Z1 + 0.3), (px - 1.8, LINTEL_BACK + 1.6, LINTEL_Z1 + 0.3), 0.012, 5)
+        k.moving_head((px, lintel_top(z), z), (px / 30 * 0.12, 1, lean), 'Sky', 150, 0.01, body=False)
+    k.source('fireworks', (px, lintel_top(PZ) + 0.1, PZ))
 
     # The speaker hang: a steel arm off the front pier's inner face, braced back to the concrete.
     fz = PIER_Z[0]
@@ -271,7 +263,7 @@ def band(k):
         k.truss('Black', (-half, y, tz), (half, y, tz), 0.5)
     x = -half
     while x <= half + 1e-3:
-        if all(abs(abs(x) - p) > 1.4 for p in (10, 30)):
+        if all(abs(abs(x) - p) > PIER / 2 + 0.2 for p in (10, 30)):
             for dz in (-0.25, 0.25):
                 k.rod('Black', (x, lo, tz + dz), (x, hi, tz + dz), 0.03, 6)
             for y in (9.4, 11.0, 12.6):
@@ -288,7 +280,7 @@ def band(k):
         k.box('Steel', (0.06, 0.1, 1.5), (x, 8.24, cz + 0.3))
         x += half / 16
     steel_rail(k, (-half, 8.36, cz - 0.4), (half, 8.36, cz - 0.4), 1.1, 2.375)
-    for x in (-34, -20, 20, 34):
+    for x in (-26, -20, 20, 26):
         k.box('Dark', (0.3, 0.08, 0.12), (x, 9.5, cz - 0.4))
         k.box('Glow.Lamp', (0.24, 0.015, 0.08), (x, 9.455, cz - 0.4))
     # A ladder down to the deck at each end, and a mast under each end of the truss.
@@ -299,7 +291,7 @@ def band(k):
         for bx in (-0.45, 0.45):
             for bz in (-0.45, 0.45):
                 bolt(k, (x + bx, 0.06, tz + bz))
-        lx = side * (DECK_HALF - 0.6)
+        lx = side * (half - 1.2)
         for dx in (-0.22, 0.22):
             k.rod('Alu', (lx + dx, DECK, cz + 0.55), (lx + dx, 9.4, cz + 0.55), 0.02, 6)
         y = DECK + 0.3
@@ -581,7 +573,7 @@ def shore(k):
             j = i + 1
             facing(b, (at(i / teeth, radius, WATER - 0.2), at(j / teeth, radius, WATER - 0.2), at(j / teeth, radius + 2, crown(j)), at(i / teeth, radius + 2, crown(i))), eye)
 
-    # Two pontoons with lighting towers, and a row of buoys beyond the terrace.
+    # Two pontoons with fireworks, and a row of buoys beyond the terrace.
     for side in (-1, 1):
         px, pz = side * 64, -40
         k.box('Dark', (9, 0.9, 6), (px, WATER + 0.15, pz), bevel=0.04)
@@ -593,18 +585,6 @@ def shore(k):
         for dx in (-4, 4):
             for dz in (-2.6, 2.6):
                 k.drum('Steel', 0.09, 0.3, (px + dx, top, pz + dz), 8)
-        k.box('Steel', (1.4, 0.06, 1.4), (px, top + 0.03, pz), bevel=0.01)
-        k.truss('Steel', (px, top, pz), (px, top + 12, pz), 0.6)
-        for dx, dz in ((-4, -2.6), (4, -2.6), (-4, 2.6), (4, 2.6)):
-            k.rod('Chrome', (px + dx, top + 0.3, pz + dz), (px, top + 11.5, pz), 0.012, 4)
-        # The head frame: four floodlights turned to the stage and the terrace.
-        k.box('Steel', (2.6, 0.1, 0.1), (px, top + 12.05, pz))
-        yaw = math.atan2(-px, 24)
-        f = K.frame((px, top + 12.0, pz), yaw)
-        for dx in (-1.05, -0.35, 0.35, 1.05):
-            k.box('Dark', (0.6, 0.45, 0.25), f(dx, -0.35, 0.1), yaw, 0.35, bevel=0.02)
-            k.panel('Glow.Lamp', 0.52, 0.37, f(dx, -0.39, 0.235), yaw, 0.35)
-        k.box('Glow.Red', (0.1, 0.1, 0.1), (px, top + 12.2, pz))
         for dx in (-2.6, 2.6):
             k.box('Dark', (1.3, 0.14, 0.7), (px + dx, top + 0.07, pz + 1.2), bevel=0.015)
             for i in range(5):

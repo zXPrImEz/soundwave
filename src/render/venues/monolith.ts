@@ -97,7 +97,7 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
   const sky = duskSky(dusk);
   root.add(sky);
 
-  const band = new LedScreen([380, 20], ['solid', 'stripes', 'solid', 'bars', 'solid', 'rings'], 2.6, 11);
+  const band = new LedScreen([316, 20], ['solid', 'stripes', 'solid', 'bars', 'solid', 'rings'], 2.2, 11);
   const fascia = new LedScreen([520, 10], ['stripes', 'solid', 'bars'], 1.5, 12);
   const booth = new LedScreen([64, 16], ['bars', 'stripes', 'grid'], 2, 13);
   const screens = { band, fascia, booth };
@@ -206,7 +206,7 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
       if (s.bar % 4 === 2) fascia.next(s.bar / 4);
       if (s.bar % 4 === 0) booth.next(s.bar / 4);
     }
-    band.level = 1.6 + 1.2 * f.barPulse + 0.8 * busy + s.overdrive;
+    band.level = 1.25 + 0.7 * f.barPulse + 0.5 * busy + 0.6 * s.overdrive;
     for (const scr of Object.values(screens)) scr.update(f.dt);
     bulbs.update(f, 1.2);
     gear.jog.uniforms.uLevel.value = 1.4 + 2 * f.pulse;
@@ -312,7 +312,7 @@ export async function buildMonolith(ctx: VenueContext): Promise<Venue> {
       { key: [1, 0.7, 0.3], accent: [1, 1, 1], wash: [0.5, 0.25, 0.05] },
     ],
     exposure: 0.92,
-    bloom: [0.28, 0.5, 0.95],
+    bloom: [0.22, 0.5, 0.98],
     hazeNear: [0.06, 0.065, 0.08],
     mirror: { level: data.water },
     pools: 1.7,
