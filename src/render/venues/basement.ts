@@ -112,13 +112,13 @@ export async function buildBasement(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-R.half + 0.6, R.z0 + 0.6, R.half - 0.6, R.z1 - 0.6],
-      step: 0.64,
+      step: 0.58,
       density: (x, z) => {
         if (!clear(x, z)) return 0;
         if (Object.values(band).some((p) => Math.hypot(x - p[0], z - p[2]) < 1)) return 0;
         // A lane before the band stays open, so they are seen.
         if (Math.abs(x) < 4.2 && z > 0.6 && z < 3.6) return 0;
-        return Math.max(0.5, 1.1 - Math.hypot(x, z) / 16);
+        return Math.max(0.7, 1.15 - Math.hypot(x, z) / 18);
       },
       face: () => [0, 1.5],
       wander: 0.8,

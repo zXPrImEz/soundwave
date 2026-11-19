@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_VENUE, isVenueChoice, menuVenue, resolveVenue, VENUE_IDS, venueName } from '../src/render/venues/catalog';
+import { crowdAt } from '../src/render/venues/kit/crowd';
 import { MIN_FLASH_GAP, StrobeGate } from '../src/render/venues/kit/strobe';
 import { LED_LOOKS, LedScreen } from '../src/render/venues/kit/led';
 import { normalizeSettings } from '../src/game/settings';
@@ -62,5 +63,34 @@ describe('led screens', () => {
       screen.update(0);
       expect(screen.material.uniforms.uLookB.value).toBe(LED_LOOKS[(['bars', 'grid', 'rings'] as const)[Math.floor(bar) % 3]]);
     }
+  });
+});
+
+describe('crowds on spots', () => {
+  // A ring of seats round a stage at the centre, one storey up.
+  const seats = Array.from({ length: 400 }, (_, i) => [Math.sin(i / 64) * 40, 3, Math.cos(i / 64) * 40]);
+  const area = { spots: seats, fill: 1, face: (): [number, number] => [0, 0], jitter: 0.1, wander: 0 };
+
+  it('takes every spot when full, on its floor, near the spot and facing the stage', () => {
+    const people = crowdAt(area, ['a', 'b'], 1, []);
+    expect(people.length).toBe(seats.length);
+    people.forEach((p, i) => {
+      expect(p.pos[1]).toBe(3);
+      expect(Math.hypot(p.pos[0] - seats[i][0], p.pos[2] - seats[i][2])).toBeLessThanOrEqual(0.1 * Math.SQRT2 + 1e-9);
+      // Facing the centre: the yaw's direction points from the person back to the origin.
+      expect(Math.sin(p.yaw) * -p.pos[0] + Math.cos(p.yaw) * -p.pos[2]).toBeCloseTo(Math.hypot(p.pos[0], p.pos[2]), 6);
+      expect(p.far).toBe(true);
+    });
+  });
+
+  it('thins out with the fill and the graphics share, and keeps room round a camera', () => {
+    const quarter = crowdAt({ ...area, fill: 0.5 }, ['a'], 0.5, []).length;
+    expect(quarter).toBeGreaterThan(seats.length * 0.15);
+    expect(quarter).toBeLessThan(seats.length * 0.35);
+    expect(crowdAt(area, ['a'], 0, [])).toEqual([]);
+    const cam: [number, number, number] = [seats[0][0], 4.7, seats[0][2]];
+    const people = crowdAt(area, ['a'], 1, [cam]);
+    expect(people.every((p) => Math.hypot(p.pos[0] - cam[0], p.pos[2] - cam[2]) >= 1.4)).toBe(true);
+    expect(people.some((p) => !p.far)).toBe(true);
   });
 });

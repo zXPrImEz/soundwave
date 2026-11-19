@@ -191,12 +191,12 @@ export async function buildMainstage(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-96, -7, 96, 150],
-      step: 0.92,
+      step: 0.9,
       density: (x, z) => {
         if (!clear(x, z) || Math.abs(x) > 52 + (z + 7) * 0.55) return 0;
         // The pit round the catwalk and its platform.
         if (Math.abs(x) <= 7.4 && z < 8.6) return 0;
-        return Math.max(0.25, 1.08 - Math.hypot(x, z + 8) / 160);
+        return Math.max(0.42, 1.1 - Math.hypot(x, z + 8) / 175);
       },
       face: (x) => [x * 0.3, -20],
     },

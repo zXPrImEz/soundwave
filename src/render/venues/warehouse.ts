@@ -206,12 +206,12 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
   const audience = fillCrowd(
     {
       bounds: [-HALF + GALLERY + 0.6, STAGE_FRONT + 3.4, HALF - GALLERY - 0.6, FRONT - 1.5],
-      step: 0.72,
+      step: 0.66,
       density: (x, z) => {
         if (PILLARS.some(([px, pz]) => Math.hypot(x - px, z - pz) < 1.1)) return 0;
         if (Math.abs(x) < 3 && Math.abs(z - 30) < 2.2) return 0;
         const back = (z - STAGE_FRONT) / (FRONT - STAGE_FRONT);
-        return Math.max(0.2, 1.05 - back * 0.85 - Math.max(0, Math.abs(x) - 15) * 0.05);
+        return Math.max(0.45, 1.08 - back * 0.7 - Math.max(0, Math.abs(x) - 15) * 0.04);
       },
       face: (x) => [x * 0.3, -12],
     },
@@ -229,8 +229,8 @@ export async function buildWarehouse(ctx: VenueContext): Promise<Venue> {
         {
           bounds:
             side < 0 ? [-HALF + 0.5, -1.5, -HALF + GALLERY - 0.35, FRONT - 4.5] : [HALF - GALLERY + 0.35, -1.5, HALF - 0.5, FRONT - 4.5],
-          step: 0.8,
-          density: (x) => (Math.abs(Math.abs(x) - (HALF - GALLERY + 0.6)) < 1.2 ? 0.85 : 0.25),
+          step: 0.72,
+          density: (x) => (Math.abs(Math.abs(x) - (HALF - GALLERY + 0.6)) < 1.2 ? 0.95 : 0.4),
           face: (_, z) => [0, Math.min(z, -6)],
           ground: () => GALLERY_Y,
           wander: 0.4,
