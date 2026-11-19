@@ -1,14 +1,19 @@
 """
 Mainstage: the headline stage of an open-air festival, built as a fantasy palace (see build.py).
 
-A gatehouse with a great keyhole arch under a ribbed dome and lantern; inside the arch the main
-screen, and before it the DJ on a balcony. Either side a wing: an open arcade on slender columns,
-a pavilion framing a screen under its own dome, flanks of lit windows, turrets, kiosks and spires
-along the skyline, humpbacked colonnade bridges between the turrets, and a tall round tower with a
-gallery at each end. Rocks at the foot of the wings, fans of ribs on columns along the front.
-Every arch, rib, cornice and window is drawn in glowing tube (Move_outline_0..4: centre, left wing,
-right wing, towers, domes). The band plays at the front of the deck, the singer out on the thrust.
+A gatehouse with a great keyhole arch under a ribbed dome and lantern; through the arch a tunnel of
+stepped portals, each step an LED band, narrowing to a keyhole screen at the back, and before it
+the DJ on a balcony that juts out of the arch. Either side a wing swung forward toward the crowd
+(a horseshoe): an open arcade on slender columns, a pavilion framing a screen under its own dome,
+flanks of lit windows, turrets, kiosks and spires along the skyline, humpbacked colonnade bridges
+between the turrets, and a tall round tower with a gallery at its end. Minarets stand behind the
+wings, a pointed crown arch of light rises over the whole front. Rocks at the foot of the wings,
+fans of ribs on columns along the front. The palace is drawn at 1.35 times the size of the deck
+and the gear on it (see Moved). Every arch, rib, cornice and window is drawn in glowing tube
+(Move_outline_<n>, one per zone in OUTLINES). The band plays at the front of the deck; a catwalk
+runs out into the crowd to a round platform.
 """
+import contextlib
 import math
 import os
 import random
@@ -20,13 +25,22 @@ from mathutils import Matrix, Vector
 import kit as K
 
 K.PREVIEW.update({'Stone': (0.6, 0.48, 0.34), 'Marble': (0.82, 0.8, 0.74), 'Dome': (0.16, 0.42, 0.4), 'Gold': (0.85, 0.6, 0.12),
-                  'Rock': (0.3, 0.28, 0.26), 'Ground': (0.1, 0.15, 0.07), 'Deck': (0.035, 0.035, 0.04), 'Canvas': (0.75, 0.72, 0.64)})
+                  'Rock': (0.3, 0.28, 0.26), 'Ground': (0.1, 0.15, 0.07), 'Deck': (0.035, 0.035, 0.04), 'Canvas': (0.75, 0.72, 0.64),
+                  'Rib': (0.12, 0.09, 0.14)})
 
 TAU, PI = math.tau, math.pi
 sin, cos = math.sin, math.cos
-DECK_Y, DECK_FRONT, DECK_HALF = 3.0, -12.0, 30.0
-ZG, ZW, ZB = -23.0, -25.0, -31.0   # the gatehouse's front, the wings' front, the back of the great arch
+DECK_Y, DECK_FRONT, DECK_HALF = 3.0, -12.0, 36.0
+# The palace is modelled in the units below and drawn SCALE times larger about the deck's front edge.
+SCALE, PIVOT = 1.35, (0.0, DECK_Y, DECK_FRONT)
+ZG, ZW, ZB = -23.0, -25.0, -35.0   # the gatehouse's front, the wings' front, the back of the great arch
 TOWER_X, TOWER_Z = 50.0, -26.5
+WING_YAW = math.radians(25)   # how far each wing swings forward about its inner end
+# The tunnel through the great arch: the widths of its portals and where each begins, back to ZB.
+TUNNEL_W = (16.0, 14.4, 12.8, 11.2)
+TUNNEL_Z = (ZG - 1.2, -26.4, -29.2, -32.0)
+CROWN_SPAN, CROWN_Z = 88.0, -10.0   # the crown arch: across its feet, and how far forward they stand
+OUTLINES = ('centre', 'left', 'right', 'towers', 'domes', 'tunnel0', 'tunnel1', 'tunnel2', 'tunnel3', 'crown')
 
 ONION = [(0.8, 0), (1.0, 0.13), (1.05, 0.27), (0.98, 0.42), (0.8, 0.57), (0.53, 0.71), (0.29, 0.82), (0.13, 0.91), (0.04, 1.0)]
 HIGH = [(0.95, 0), (1.0, 0.1), (1.0, 0.24), (0.94, 0.4), (0.82, 0.56), (0.63, 0.72), (0.4, 0.86), (0.24, 0.95), (0.2, 1.0)]
@@ -231,6 +245,74 @@ def bay(k, material, m, x0, x1, y0, y1, cx, w, ysill, ys, kind='round', depth=0.
         tube(glow, [m @ Vector((cx + x, y, 0.08)) for x, y in gp], gr, 4, closed=ysill > y0 + 1e-4)
 
 
+def xform(at=(0, 0, 0), yaw=0.0, scale=1.0, to=None):
+    """Turned `yaw` and scaled about `at` (then moved to `to`, if given)."""
+    return Matrix.Translation(Vector(to if to is not None else at)) @ Matrix.Rotation(yaw, 4, 'Y') @ Matrix.Scale(scale, 4) @ Matrix.Translation(-Vector(at))
+
+
+def big(p):
+    """Where a point of the palace's own units ends up once it is drawn to scale."""
+    return tuple(round(c, 3) for c in xform(PIVOT, 0, SCALE) @ Vector(p))
+
+
+@contextlib.contextmanager
+def moved(k, G, marks, m, yaw=0.0, scale=1.0):
+    """
+    Everything built inside the block is moved by `m` (a turn by `yaw` and a scale by `scale`):
+    its geometry in every gathered mesh and outline, the parts made as objects of their own, and
+    what it put in the venue's data (moving heads, repeated shapes, sources, firework points).
+    New vertices are told from old ones by an int layer, one per depth, so blocks can nest.
+    """
+    moved.depth = getattr(moved, 'depth', 0) + 1
+    name = 'moved%d' % moved.depth
+    every = lambda: list(k.parts.values()) + G + [b for _, _, b in k.objects]   # noqa: E731
+    for b in every():
+        layer = b.verts.layers.int.get(name) or b.verts.layers.int.new(name)
+        for v in b.verts:
+            v[layer] = 1
+    data = k.data
+    n_fx = len(data['fixtures'])
+    n_inst = {key: len(v) for key, v in data['instances'].items()}
+    n_src = {key: len(v) for key, v in data['sources'].items()}
+    n_fw = len(marks['fireworks'])
+    try:
+        yield
+    finally:
+        moved.depth -= 1
+        turn = m.to_3x3().normalized()
+        for b in every():
+            layer = b.verts.layers.int.get(name)
+            fresh = [v for v in b.verts if layer is None or v[layer] == 0]
+            bmesh.ops.transform(b, matrix=m, verts=fresh)
+            if layer is not None:
+                b.verts.layers.int.remove(layer)
+        for fx in data['fixtures'][n_fx:]:
+            fx['pos'] = K.r3(m @ Vector(fx['pos']))
+            fx['dir'] = K.r3((turn @ Vector(fx['dir'])).normalized())
+        for key, places in data['instances'].items():
+            for p in places[n_inst.get(key, 0):]:
+                p[0:3] = K.r3(m @ Vector(p[0:3]))
+                p[3] = round(p[3] + yaw, 4)
+                p[4] = round(p[4] * scale, 3)
+        for key, points in data['sources'].items():
+            points[n_src.get(key, 0):] = [K.r3(m @ Vector(p)) for p in points[n_src.get(key, 0):]]
+        marks['fireworks'][n_fw:] = [tuple(K.r3(m @ Vector(p))) for p in marks['fireworks'][n_fw:]]
+
+
+def quad_uv(b, corners, toward):
+    """A face through corners [(position, uv), ...], turned to face `toward`, with those uvs."""
+    uv = b.loops.layers.uv.verify()
+    verts = [b.verts.new(p) for p, _ in corners]
+    at = {v: c[1] for v, c in zip(verts, corners)}
+    f = b.faces.new(verts)
+    f.normal_update()
+    if f.normal.dot(Vector(toward)) < 0:
+        f.normal_flip()
+    for loop in f.loops:
+        loop[uv].uv = at[loop.vert]
+    return f
+
+
 # ---------------------------------------------------------------------- the palace's parts
 def column(k, at, h, r=0.28, sides=10, material='Marble'):
     """A column on a plinth: a moulded base, a shaft that narrows, a bell capital under its abacus."""
@@ -400,29 +482,73 @@ def bridge(k, a, c, glow, hump=1.4, bow=0.7, n=7):
 
 
 # ---------------------------------------------------------------------- the gatehouse
+def tunnel(k, G, po, ysi, ri):
+    """
+    The tunnel through the great arch: portals one behind the other, each a little narrower and
+    lower (the arch's inner order, shrunk about its foot), so the arch steps in like a telescope.
+    Every step faces the crowd as an LED band (LED_tunnel_<n>), lamps along its outer edge, a tube
+    of light along its inner one (outline zones tunnel0..3), moving heads either side shooting out
+    of the tunnel; the vault between them is stone. The last portal is filled by the keyhole screen.
+    """
+    stone = k.bm('Stone')
+
+    def portal(j, grow=0.0, n=28):
+        f = TUNNEL_W[j] / 16
+        return arch(TUNNEL_W[j], DECK_Y + (ysi - DECK_Y) * f, 'horseshoe', DECK_Y, n, grow=grow, R=ri * f)
+
+    zs = list(TUNNEL_Z) + [ZB]
+    outer, wide = po, 17.2
+    for j, w in enumerate(TUNNEL_W):
+        pts, cyr = portal(j)
+        z0, z1 = zs[j], zs[j + 1]
+        if j == 0:
+            for i in range(len(pts) - 1):
+                face(stone, [(*outer[i], z0), (*outer[i + 1], z0), (*pts[i + 1], z0), (*pts[i], z0)], (0, 0, 1))
+        else:
+            total = sum(math.dist(a, c) for a, c in zip(outer, outer[1:]))
+
+            def led(b, outer=outer, pts=pts, z0=z0, total=total):
+                done = 0.0
+                for i in range(len(pts) - 1):
+                    step = math.dist(outer[i], outer[i + 1])
+                    u0, u1 = done / total, (done + step) / total
+                    quad_uv(b, [((*outer[i], z0), (u0, 0)), ((*outer[i + 1], z0), (u1, 0)), ((*pts[i + 1], z0), (u1, 1)), ((*pts[i], z0), (u0, 1))], (0, 0, 1))
+                    done += step
+            k.own('LED_tunnel_%d' % j, 'LED.tunnel', led)
+            bulbs(k, [(x, y, z0 + 0.12) for x, y in portal(j - 1, -0.16, 40)[0]], 0.45)
+        for i in range(len(pts) - 1):
+            (ax, ay), (bx, by) = pts[i], pts[i + 1]
+            mx, my = (ax + bx) / 2, (ay + by) / 2
+            face(stone, [(ax, ay, z0), (bx, by, z0), (bx, by, z1), (ax, ay, z1)], (-mx, min(my, cyr) - my, 0))
+        tube(G[5 + j], [(x, y, z0 + 0.1) for x, y in portal(j, 0.1, 40)[0]], 0.08, 4)
+        # Moving heads on the step, either side, low and at the springing, aimed out at the field.
+        x = (wide + w) / 4
+        for y in (7.0, DECK_Y + (ysi - DECK_Y) * w / 16 + 1.0):
+            for sx in (-1, 1):
+                k.moving_head((sx * x, y, z0 + 0.3), (-sx * 0.12, 0.08, 1), 'Tunnel', 80, 0.018)
+        outer, wide = pts, w
+    pts, _ = portal(len(TUNNEL_W) - 1)
+    x0, x1 = min(x for x, _ in pts), max(x for x, _ in pts)
+    y0, y1 = min(y for _, y in pts), max(y for _, y in pts)
+    k.own('LED_main', 'LED.main', lambda b: quad_uv(b, [((x, y, ZB + 0.05), ((x - x0) / (x1 - x0), (y - y0) / (y1 - y0))) for x, y in pts], (0, 0, 1)))
+    k.data['screens']['main'] = {'w': round((x1 - x0) * SCALE, 2), 'h': round((y1 - y0) * SCALE, 2)}
+    return (0, (y0 + y1) / 2, ZB + 0.05)
+
+
 def gatehouse(k, G, marks):
     g, gd = G[0], G[4]
     m = Matrix.Translation((0, 0, ZG))
     stone = k.bm('Stone')
     cy, ro, ri = 12.4, 9.2, 8.6
     yso, ysi = cy - math.sqrt(ro * ro - 8.6 ** 2), cy - math.sqrt(ri * ri - 64)
-    # The great keyhole arch in two orders: the outer cut through the front, a step, the inner
-    # running back as a vault to the wall the screen hangs on.
+    # The great keyhole arch: the outer order cut through the front, a step, then a tunnel of
+    # portals, each a little smaller than the one before, back to the keyhole screen.
     bay(k, 'Stone', m, -10, 10, DECK_Y, 23.4, 0, 17.2, DECK_Y, yso, 'horseshoe', 1.2, n=28, R=ro)
     po, _ = arch(17.2, yso, 'horseshoe', DECK_Y, 28, R=ro)
-    pi, _ = arch(16, ysi, 'horseshoe', DECK_Y, 28, R=ri)
-    for i in range(len(po) - 1):
-        face(stone, [(*po[i], ZG - 1.2), (*po[i + 1], ZG - 1.2), (*pi[i + 1], ZG - 1.2), (*pi[i], ZG - 1.2)], (0, 0, 1))
-        (ax, ay), (bx, by) = pi[i], pi[i + 1]
-        mx, my = (ax + bx) / 2, (ay + by) / 2
-        face(stone, [(ax, ay, ZG - 1.2), (bx, by, ZG - 1.2), (bx, by, ZB), (ax, ay, ZB)], (-mx, min(my, cy) - my, 0))
-    face(stone, [(x, y, ZB) for x, y in pi], (0, 0, 1))
+    marks['screen'] = tunnel(k, G, po, ysi, ri)
     for grow, z, r, target in ((0.3, ZG + 0.12, 0.09, g), (1.2, ZG + 0.1, 0.05, g), (0.75, ZG + 0.02, 0.3, k.bm('Marble'))):
         tube(target, [(x, y, z) for x, y in arch(17.2, yso, 'horseshoe', DECK_Y, 40, grow=grow, R=ro)[0]], r, 6)
     bulbs(k, [(x, y, ZG + 0.36) for x, y in arch(17.2, yso, 'horseshoe', DECK_Y, 40, grow=0.75, R=ro)[0]], 0.4)
-    tube(g, [(x, y, ZG - 1.1) for x, y in arch(16, ysi, 'horseshoe', DECK_Y, 40, grow=0.12, R=ri)[0]], 0.07, 4)
-    for z in (-26.0, -28.6):
-        tube(g, [(x, y, z) for x, y in arch(16, ysi, 'horseshoe', DECK_Y, 32, grow=-0.07, R=ri)[0]], 0.05, 4)
     # A frame round the arch, medallions in its spandrels.
     for sx in (-1, 1):
         k.box('Marble', (0.34, 20.0, 0.22), (sx * 9.83, 13.0, ZG + 0.1))
@@ -485,35 +611,13 @@ def gatehouse(k, G, marks):
             b2 = a + TAU / 32
             k.box('Marble', (0.36, 4.1, 0.2), (sin(b2) * 6.52, dc[1] + 2.55, dc[2] + cos(b2) * 6.52), b2)
     lantern = dome(k, (0, dc[1] + 5.25, dc[2]), 6.6, 7.0, gd, HIGH, 32, True, 0)
-    marks['fireworks'].insert(0, kiosk(k, lantern, 1.3, gd, 8, 1.2, ONION, 1.5, 16, 0.65))
+    marks['fireworks'].append(kiosk(k, lantern, 1.3, gd, 8, 1.2, ONION, 1.5, 16, 0.65))
     for sx in (-1, 1):
         k.moving_head((sx * 4.2, dc[1] + 5.55, dc[2] + 5.3), (sx * 0.08, 1, 0.12), 'Sky', 140, 0.012)
-
-    # The DJ's balcony under the arch: a slab on a low arcade, a balustrade round it, the booth
-    # at its front edge; the main screen behind.
-    bz = -20.5
-    k.box('Stone', (13, 0.4, bz - ZB), (0, 5.8, (bz + ZB) / 2))
-    k.floor('Marble', 12.9, bz - ZB - 0.1, (0, 6.005, (bz + ZB) / 2))
-    mb = Matrix.Translation((0, 0, bz))
-    for i in range(5):
-        x0 = -6.5 + i * 2.6
-        bay(k, 'Stone', mb, x0, x0 + 2.6, 4.6, 5.6, x0 + 1.3, 2.1, 4.6, 4.6, 'segment', 0.5, None, g, 8, 0.035, rise=0.75)
-    for i in range(6):
-        column(k, (-6.5 + i * 2.6, DECK_Y, bz - 0.25), 1.6, 0.2, 8)
-    k.panel('Black', 13, 2.6, (0, 4.3, bz - 1.4))
-    for sx in (-1, 1):
-        k.panel('Stone', 2.5, 2.6, (sx * 6.5, 4.3, bz - 1.25), sx * PI / 2)
-        balustrade(k, (sx * 2.7, 6.0, bz - 0.15), (sx * 6.35, 6.0, bz - 0.15))
-        balustrade(k, (sx * 6.35, 6.0, bz - 0.15), (sx * 6.35, 6.0, ZG - 1.0))
-        for i in range(10):   # the stairs up to it, inside the arch
-            k.box('Stone', (1.2, 0.3 * (i + 1), 0.3), (sx * 7.25, DECK_Y + 0.15 * (i + 1), -25 - 0.3 * i))
-    k.box('Marble', (13.4, 0.4, 0.5), (0, 5.8, bz + 0.05))
-    gbox(g, (13.4, 0.06, 0.06), (0, 5.62, bz + 0.33))
-    k.dj_booth((0, 6.0, bz - 0.85), 0, 3.6, 'booth')
-    k.mark('dj', (0, 6.0, bz - 1.6))
-    k.box('Black', (15.6, 13.6, 0.3), (0, 13.7, ZB + 0.16))
-    k.own('LED_main', 'LED.main', lambda b: k.panel('LED.main', 15, 13, (0, 13.7, ZB + 0.33), b=b))
-    k.data['screens']['main'] = {'w': 15, 'h': 13}
+    # A row of moving heads along the parapet, fanning up and out over the field.
+    for i in range(10):
+        x = -13.5 + i * 3.0
+        k.moving_head((x, top + 0.75, ZG + 0.75), (x * 0.03, 1, 0.55), 'Roof', 110, 0.016)
     k.box('Dark', (0.5, 0.3, 0.4), (0, cy + ri - 0.2, ZG - 0.6), bevel=0.02)
     k.box('Glow.Green', (0.16, 0.06, 0.02), (0, cy + ri - 0.25, ZG - 0.39))
     k.source('laser.arch', (0, cy + ri - 0.4, ZG - 0.5))
@@ -705,71 +809,206 @@ def tower(k, s, G, marks):
         a = -s * (PI / 12 + (j - 1) * PI / 6)
         p = Vector((cx + sin(a) * 5.75, 29.25, cz + cos(a) * 5.75))
         k.moving_head(p, Vector((-s * 14 + s * j * 9, 2, 46)) - p, 'Tower', 70, 0.02)
+        p = Vector((cx + sin(a) * 5.8, 17.85, cz + cos(a) * 5.8))
+        k.moving_head(p, Vector((-s * 30 + s * j * 12, 30, 40)) - p, 'Tower', 80, 0.02)
     for a in (-0.35, 0.35):
         k.moving_head((cx + sin(a) * 5.3, 30.8, cz + cos(a) * 5.3), (sin(a) * 0.2, 1, 0.12), 'Sky', 140, 0.012)
+    # Flame jets on the roof's ledge, a laser head between them.
+    for a in (-0.95, 0.95):
+        p = (cx + sin(a) * 5.3, 30.5, cz + cos(a) * 5.3)
+        k.box('Dark', (0.5, 0.22, 0.4), (p[0], p[1] + 0.11, p[2]), a, bevel=0.02)
+        k.source('flames', (p[0], p[1] + 0.3, p[2]))
+    k.box('Dark', (0.4, 0.25, 0.35), (cx - s * 1.6, 30.62, cz + 5.1), bevel=0.02)
+    k.source('laser.tower', (cx - s * 1.6, 30.85, cz + 5.3))
+
+
+def minaret(k, at, h, g, gd, marks):
+    """A slim minaret behind the wings: an eight-sided shaft with lines of light up its edges, two
+    galleries ringed with lamps, a kiosk and a spire on top, a laser head and a sky beam."""
+    x, _, z = at
+    c = (x, 0, z)
+    y1, y2 = h * 0.55, h * 0.8
+    stone, marble = k.bm('Stone'), k.bm('Marble')
+    revolve(stone, [(2.3, 0), (2.3, 1.2), (2.0, 1.6), (2.0, y1)], c, 8, rot=PI / 8, smooth=False)
+    revolve(marble, [(2.0, y1), (2.9, y1 + 0.9), (2.9, y1 + 1.2), (1.6, y1 + 1.2)], c, 16)
+    revolve(stone, [(1.6, y1 + 1.2), (1.6, y2)], c, 8, rot=PI / 8, smooth=False)
+    revolve(marble, [(1.6, y2), (2.3, y2 + 0.7), (2.3, y2 + 1.0), (1.2, y2 + 1.0)], c, 16)
+    for y, r in ((y1 + 1.05, 2.97), (y2 + 0.85, 2.37)):
+        gring(gd, (x, y, z), r, 0.045, 16)
+        bulbs(k, ring_pts((x, y + 0.25, z), r - 0.1, 48), 0.55, True)
+    for a in (-PI / 8, PI / 8):
+        tube(g, [(x + sin(a) * 2.05, 1.6, z + cos(a) * 2.05), (x + sin(a) * 2.05, y1, z + cos(a) * 2.05)], 0.05, 4)
+        tube(g, [(x + sin(a) * 1.65, y1 + 1.2, z + cos(a) * 1.65), (x + sin(a) * 1.65, y2, z + cos(a) * 1.65)], 0.045, 4)
+    for ysill, r in ((h * 0.18, 1.86), (h * 0.36, 1.86), (y1 + 2.5, 1.49)):
+        window_on(k, (x, z), r, 0, ysill, ysill + 2.0, 0.7, g, 'pointed', False)
+    marks['fireworks'].append(kiosk(k, (x, y2 + 1.0, z), 1.3, gd, 6, 1.8, CONE, 5.0, 12, 0.6))
+    k.moving_head((x, y2 + 1.45, z + 1.95), (0, 1, 0.2), 'Sky', 140, 0.012)
+    k.box('Dark', (0.4, 0.25, 0.35), (x, y1 + 1.33, z + 2.4), bevel=0.02)
+    k.source('laser.minaret', (x, y1 + 1.55, z + 2.5))
+
+
+def crown(k, g, marks):
+    """
+    A pointed arch over the whole front, 88 m across, leaning back as it rises: a dark rib with two
+    lines of light and a row of lamps down its face, moving heads along it, lasers at its apex and
+    shoulders, plinths at its feet. Built in the venue's own size (not the palace's).
+    """
+    pts, _ = arch(CROWN_SPAN, 0, 'pointed', None, 56)
+    lean = 0.17
+    out = Vector((0, lean, 1)).normalized()
+    path = [Vector((x, y, CROWN_Z - y * lean)) for x, y in pts]
+    n = len(path)
+    w, d = 2.4, 1.4
+    across = []
+    for i, p in enumerate(path):
+        t = (path[min(i + 1, n - 1)] - path[max(i - 1, 0)]).normalized()
+        across.append(out.cross(t).normalized())
+    secs = [[p + m * (a * w / 2) + out * (b * d / 2) for a, b in ((1, 1), (-1, 1), (-1, -1), (1, -1))] for p, m in zip(path, across)]
+    rib = k.bm('Rib')
+    for i in range(n - 1):
+        mid = (path[i] + path[i + 1]) / 2
+        for j in range(4):
+            q = [secs[i][j], secs[i + 1][j], secs[i + 1][(j + 1) % 4], secs[i][(j + 1) % 4]]
+            face(rib, q, sum(q, Vector()) / 4 - mid)
+    for a in (1, -1):
+        tube(g, [p + m * (a * (w / 2 - 0.2)) + out * (d / 2 + 0.08) for p, m in zip(path, across)], 0.12, 4)
+    # An LED band down the rib's face between the lines (LED_crown), its u along the arch.
+    total = sum((q - p).length for p, q in zip(path, path[1:]))
+
+    def band(b):
+        done = 0.0
+        for i in range(n - 1):
+            step = (path[i + 1] - path[i]).length
+            u0, u1 = done / total, (done + step) / total
+            e = [path[j] + out * (d / 2 + 0.03) + across[j] * (a * (w / 2 - 0.42)) for j in (i, i + 1) for a in (1, -1)]
+            quad_uv(b, [(e[0], (u0, 0)), (e[2], (u1, 0)), (e[3], (u1, 1)), (e[1], (u0, 1))], out)
+            done += step
+    k.own('LED_crown', 'LED.crown', band)
+    k.data['screens']['crown'] = {'w': round(total, 2), 'h': round(w - 0.84, 2)}
+    for i in range(5, n - 5, 4):
+        p = path[i]
+        k.moving_head(p + out * (d / 2 + 0.32), out + Vector((-p.x * 0.006, -0.3 if p.y > 20 else 0.4, 0)), 'Crown', 90, 0.02)
+    apex = path[n // 2]
+    for i in (n // 2, n // 4, n - 1 - n // 4):
+        k.source('laser.crown', path[i] + out * (d / 2 + 0.5))
+    marks['fireworks'].append(tuple(K.r3(apex + Vector((0, 1.2, 0)))))
+    for p in (path[0], path[-1]):
+        k.box('Stone', (4.2, 3.6, 4.2), (p.x, 1.8, p.z), bevel=0.05)
+        k.box('Marble', (4.6, 0.4, 4.6), (p.x, 3.8, p.z))
+        gring(g, (p.x, 3.65, p.z), 3.3, 0.06, 4, PI / 4)
+        k.source('flames', (p.x, 4.2, p.z))
+
+
+ROCKS = ((31.6, -22.4, (2.2, 1.7, 1.6)), (34.3, -21.9, (1.8, 2.5, 1.5)), (36.6, -21.2, (1.3, 1.0, 1.2)), (38.7, -22.3, (2.3, 3.0, 1.7)),
+         (40.4, -21.6, (1.3, 1.1, 1.2)), (43.6, -21.9, (1.5, 1.4, 1.3)), (45.7, -20.6, (2.0, 1.8, 1.6)), (48.2, -19.4, (2.5, 2.2, 1.9)),
+         (52.2, -19.5, (2.2, 3.3, 1.8)), (55.6, -21.4, (2.8, 2.5, 2.2)), (57.6, -24.6, (2.5, 4.2, 2.4)), (61.0, -22.6, (1.7, 1.4, 1.5)),
+         (59.2, -27.6, (3.0, 2.5, 2.6)), (33.0, -20.3, (0.8, 0.6, 0.7)), (50.2, -17.9, (1.0, 0.7, 0.9)), (63.0, -20.0, (0.9, 0.6, 0.8)),
+         (46.6, -18.4, (0.9, 0.7, 0.8)), (54.4, -18.6, (1.2, 0.9, 1.0)))
+
+
+def palace_wing(k, s, G, marks):
+    """A wing and its end tower, rocks at their foot and fans on columns among them."""
+    wing(k, s, G, marks)
+    tower(k, s, G, marks)
+    for i, (x, z, size) in enumerate(ROCKS):
+        rock(k, (s * x, size[1] * 0.3, z), size, i * 13 + (7 if s > 0 else 91))
+    for x, z, col_h, length in ((42.0, -20.6, 6.6, 3.4), (58.8, -19.6, 5.6, 3.0)):
+        k.box('Stone', (1.7, 1.2, 1.7), (s * x, 0.6, z))
+        k.box('Marble', (1.9, 0.2, 1.9), (s * x, 1.3, z))
+        fan(k, (s * x, 1.4, z), col_h, length, G[1 if s < 0 else 2])
+
+
+def balcony(k, g):
+    """The DJ's balcony, jutting out of the great arch over the deck: a slab on a low arcade, a
+    balustrade round it, the booth at its front edge, stairs up to it either side."""
+    bz, back = -25.5, -42.0
+    k.box('Stone', (14, 0.4, bz - back), (0, 5.8, (bz + back) / 2))
+    k.floor('Marble', 13.9, bz - back - 0.1, (0, 6.005, (bz + back) / 2))
+    mb = Matrix.Translation((0, 0, bz))
+    for i in range(5):
+        x0 = -7 + i * 2.8
+        bay(k, 'Stone', mb, x0, x0 + 2.8, 4.6, 5.6, x0 + 1.4, 2.3, 4.6, 4.6, 'segment', 0.5, None, g, 8, 0.035, rise=0.75)
+    for i in range(6):
+        column(k, (-7 + i * 2.8, DECK_Y, bz - 0.25), 1.6, 0.2, 8)
+    k.panel('Black', 14, 2.6, (0, 4.3, bz - 1.4))
+    for sx in (-1, 1):
+        k.panel('Stone', 2.5, 2.6, (sx * 7, 4.3, bz - 1.25), sx * PI / 2)
+        balustrade(k, (sx * 2.7, 6.0, bz - 0.15), (sx * 6.85, 6.0, bz - 0.15))
+        balustrade(k, (sx * 6.85, 6.0, bz - 0.15), (sx * 6.85, 6.0, -33.0))
+        for i in range(10):
+            k.box('Stone', (1.2, 0.3 * (i + 1), 0.3), (sx * 8.0, DECK_Y + 0.15 * (i + 1), -26.5 - 0.3 * i))
+    k.box('Marble', (14.4, 0.4, 0.5), (0, 5.8, bz + 0.05))
+    gbox(g, (14.4, 0.06, 0.06), (0, 5.62, bz + 0.33))
+    bulbs(k, [(-7.2, 5.95, bz + 0.32), (7.2, 5.95, bz + 0.32)], 0.4)
+    k.dj_booth((0, 6.0, bz - 0.85), 0, 3.6, 'booth')
+    k.mark('dj', (0, 6.0, bz - 1.6))
 
 
 # ---------------------------------------------------------------------- the venue
 def build(k):
     if os.environ.get('MAINSTAGE_CULL'):   # previews with back faces culled, to check which way faces point
         bpy.context.scene.display.shading.show_backface_culling = True
-    G = [new_bm() for _ in range(5)]   # outlines: centre, left wing, right wing, towers, domes
+    G = [new_bm() for _ in OUTLINES]
     marks = {'fireworks': []}
 
     k.floor('Ground', 600, 600, (0, 0, 0))
-    gatehouse(k, G, marks)
-    for s in (-1, 1):
-        wing(k, s, G, marks)
-        tower(k, s, G, marks)
-        # Rocks at the foot of the wing and round the tower, fans on columns among them.
-        for i, (x, z, size) in enumerate((
-                (31.6, -22.4, (2.2, 1.7, 1.6)), (34.3, -21.9, (1.8, 2.5, 1.5)), (36.6, -21.2, (1.3, 1.0, 1.2)), (38.7, -22.3, (2.3, 3.0, 1.7)),
-                (40.4, -21.6, (1.3, 1.1, 1.2)), (43.6, -21.9, (1.5, 1.4, 1.3)), (45.7, -20.6, (2.0, 1.8, 1.6)), (48.2, -19.4, (2.5, 2.2, 1.9)),
-                (52.2, -19.5, (2.2, 3.3, 1.8)), (55.6, -21.4, (2.8, 2.5, 2.2)), (57.6, -24.6, (2.5, 4.2, 2.4)), (61.0, -22.6, (1.7, 1.4, 1.5)),
-                (59.2, -27.6, (3.0, 2.5, 2.6)), (33.0, -20.3, (0.8, 0.6, 0.7)), (50.2, -17.9, (1.0, 0.7, 0.9)), (63.0, -20.0, (0.9, 0.6, 0.8)),
-                (46.6, -18.4, (0.9, 0.7, 0.8)), (54.4, -18.6, (1.2, 0.9, 1.0)))):
-            rock(k, (s * x, size[1] * 0.3, z), size, i * 13 + (7 if s > 0 else 91))
-        for x, y, z, col_h, length in ((12.25, DECK_Y, -21.6, 5.4, 3.6), (42.0, 0, -20.6, 6.6, 3.4), (58.8, 0, -19.6, 5.6, 3.0)):
-            if y == 0:
-                k.box('Stone', (1.7, 1.2, 1.7), (s * x, 0.6, z))
-                k.box('Marble', (1.9, 0.2, 1.9), (s * x, 1.3, z))
-            fan(k, (s * x, y if y else 1.4, z), col_h, length, G[0] if x < 15 else G[1 if s < 0 else 2])
+    # The palace, in its own units, drawn SCALE times larger about the deck's front edge; each wing
+    # (with its tower, rocks and fans) swung forward about its inner end.
+    with moved(k, G, marks, xform(PIVOT, 0, SCALE), 0, SCALE):
+        gatehouse(k, G, marks)
+        for s in (-1, 1):
+            fan(k, (s * 12.25, DECK_Y, -21.6), 5.4, 3.6, G[0])
+            for x, z, h in ((26.0, -37.0, 40.0), (40.0, -34.0, 34.0)):
+                minaret(k, (s * x, 0, z), h, G[1 if s < 0 else 2], G[4], marks)
+            with moved(k, G, marks, xform((s * 18.5, 0, ZW), -s * WING_YAW), -s * WING_YAW):
+                palace_wing(k, s, G, marks)
+    k.data['screens']['wing'] = {'w': round(14 * SCALE, 2), 'h': round(9 * SCALE, 2)}
+    balcony(k, G[0])
+    crown(k, G[9], marks)
 
     # ------------------------------------------------------------- the deck
-    k.box('Black', (DECK_HALF * 2, DECK_Y, 19), (0, DECK_Y / 2, DECK_FRONT - 9.5))
-    k.floor('Deck', DECK_HALF * 2, 19, (0, DECK_Y + 0.005, DECK_FRONT - 9.5))
-    k.box('Black', (6, DECK_Y, 8), (0, DECK_Y / 2, DECK_FRONT + 4))
-    k.floor('Deck', 6, 8, (0, DECK_Y + 0.005, DECK_FRONT + 4))
-    edge = [(-30, DECK_FRONT), (-3, DECK_FRONT), (-3, DECK_FRONT + 8), (3, DECK_FRONT + 8), (3, DECK_FRONT), (30, DECK_FRONT)]
+    deck_back = -44.0
+    k.box('Black', (DECK_HALF * 2, DECK_Y, DECK_FRONT - deck_back), (0, DECK_Y / 2, (DECK_FRONT + deck_back) / 2))
+    k.floor('Deck', DECK_HALF * 2, DECK_FRONT - deck_back, (0, DECK_Y + 0.005, (DECK_FRONT + deck_back) / 2))
+    # The catwalk out into the crowd, and the round platform at its end.
+    cz, cr = 0.8, 4.2
+    k.box('Black', (6, DECK_Y, cz - DECK_FRONT), (0, DECK_Y / 2, (DECK_FRONT + cz) / 2))
+    k.floor('Deck', 6, cz - DECK_FRONT, (0, DECK_Y + 0.005, (DECK_FRONT + cz) / 2))
+    k.drum('Black', cr, DECK_Y, (0, 0, cz), 48)
+    k.drum('Deck', cr - 0.02, 0.01, (0, DECK_Y, cz), 48)
+    meet = math.asin(3 / cr)
+    arc = [(sin(-PI + meet + (TAU - 2 * meet) * i / 24) * cr, cz + cos(-PI + meet + (TAU - 2 * meet) * i / 24) * cr) for i in range(25)]
+    edge = [(-DECK_HALF, DECK_FRONT), (-3, DECK_FRONT)] + arc + [(3, DECK_FRONT), (DECK_HALF, DECK_FRONT)]
     for (x0, z0), (x1, z1) in zip(edge, edge[1:]):
-        k.box('Alu', (abs(x1 - x0) + 0.06, 0.06, abs(z1 - z0) + 0.06), ((x0 + x1) / 2, DECK_Y - 0.02, (z0 + z1) / 2))
-        k.box('Glow.Edge', (abs(x1 - x0) + 0.1, 0.03, abs(z1 - z0) + 0.1), ((x0 + x1) / 2, DECK_Y - 0.08, (z0 + z1) / 2))
-    k.proto('bulb', 'Glow.Bulb', lambda b: k.sphere('Glow.Bulb', 0.09, (0, 0, 0), 8, 5, b=b))
-    bulbs(k, [(x + (0.12 if x > 0 else -0.12) * (abs(x) < 29), DECK_Y - 0.16, z + 0.12) for x, z in edge], 0.5)
-    path = [(-30, DECK_FRONT + 0.03), (-3.03, DECK_FRONT + 0.03), (-3.03, DECK_FRONT + 8.03), (3.03, DECK_FRONT + 8.03), (3.03, DECK_FRONT + 0.03), (30, DECK_FRONT + 0.03)]
-    total = sum(math.dist(p, q) for p, q in zip(path, path[1:]))
+        length = math.dist((x0, z0), (x1, z1))
+        yaw = math.atan2(-(z1 - z0), x1 - x0)
+        out = Vector((-(z1 - z0), 0, x1 - x0)) / length
+        mid = Vector(((x0 + x1) / 2, DECK_Y, (z0 + z1) / 2))
+        k.box('Alu', (length + 0.06, 0.06, 0.06), mid + Vector((0, -0.02, 0)), yaw)
+        k.box('Glow.Edge', (length + 0.04, 0.03, 0.1), mid + Vector((0, -0.08, 0)), yaw)
+        bulbs(k, [Vector((x0, DECK_Y - 0.16, z0)) + out * 0.12, Vector((x1, DECK_Y - 0.16, z1)) + out * 0.12], 0.5)
+    total = sum(math.dist(p, q) for p, q in zip(edge, edge[1:]))
 
     def fascia(b):
-        uv = b.loops.layers.uv.verify()
         done = 0.0
-        for (x0, z0), (x1, z1) in zip(path, path[1:]):
-            f = face(b, [(x0, 1.5, z0), (x1, 1.5, z1), (x1, 2.8, z1), (x0, 2.8, z0)], (0, 0, 1) if z0 == z1 else (x0, 0, 0))
-            for loop in f.loops:
-                co = loop.vert.co
-                loop[uv].uv = ((done + math.dist((x0, z0), (co.x, co.z))) / total, (co.y - 1.5) / 1.3)
-            done += math.dist((x0, z0), (x1, z1))
+        for (x0, z0), (x1, z1) in zip(edge, edge[1:]):
+            length = math.dist((x0, z0), (x1, z1))
+            ox, oz = -(z1 - z0) / length * 0.03, (x1 - x0) / length * 0.03
+            u0, u1 = done / total, (done + length) / total
+            quad_uv(b, [((x0 + ox, 1.5, z0 + oz), (u0, 0)), ((x1 + ox, 1.5, z1 + oz), (u1, 0)), ((x1 + ox, 2.8, z1 + oz), (u1, 1)),
+                        ((x0 + ox, 2.8, z0 + oz), (u0, 1))], (ox, 0, oz))
+            done += length
     k.own('LED_fascia', 'LED.fascia', fascia)
     k.data['screens']['fascia'] = {'w': round(total, 2), 'h': 1.3}
     for s in (-1, 1):
         # Stairs down the deck's ends, a loading ramp behind them.
         for i in range(9):
-            k.box('Black', (0.36, DECK_Y - 0.3 * (i + 1), 1.8), (s * (30.18 + 0.36 * i), (DECK_Y - 0.3 * (i + 1)) / 2, -13.2))
+            k.box('Black', (0.36, DECK_Y - 0.3 * (i + 1), 1.8), (s * (DECK_HALF + 0.18 + 0.36 * i), (DECK_Y - 0.3 * (i + 1)) / 2, -13.2))
         for z in (-12.35, -14.05):
-            k.rod('Alu', (s * 30.1, DECK_Y + 0.9, z), (s * 33.4, 1.2, z), 0.025, 6)
+            k.rod('Alu', (s * (DECK_HALF + 0.1), DECK_Y + 0.9, z), (s * (DECK_HALF + 3.4), 1.2, z), 0.025, 6)
             for i in range(4):
-                k.rod('Alu', (s * (30.1 + i * 1.1), DECK_Y - i * 0.9, z), (s * (30.1 + i * 1.1), DECK_Y + 0.9 - i * 0.9, z), 0.02, 6)
-        prism(k.bm('Black'), [(0, 0), (12, 0), (0, DECK_Y)] if s > 0 else [(-12, 0), (0, 0), (0, DECK_Y)], 2.4, Matrix.Translation((s * 30, 0, -17)))
-
+                k.rod('Alu', (s * (DECK_HALF + 0.1 + i * 1.1), DECK_Y - i * 0.9, z), (s * (DECK_HALF + 0.1 + i * 1.1), DECK_Y + 0.9 - i * 0.9, z), 0.02, 6)
+        prism(k.bm('Black'), [(0, 0), (12, 0), (0, DECK_Y)] if s > 0 else [(-12, 0), (0, 0), (0, DECK_Y)], 2.4, Matrix.Translation((s * DECK_HALF, 0, -17)))
     # The band at the front: the singer out on the thrust, guitar and bass either side with their
     # amps, the drums on a riser behind; wedges, mic stands, cables.
     band = {'vox': (0, DECK_Y, -6.5), 'lead': (-5.5, DECK_Y, -14.0), 'bass': (5.5, DECK_Y, -14.0), 'drums': (0, DECK_Y + 0.6, -17.4)}
@@ -790,28 +1029,35 @@ def build(k):
     k.mic_stand((0, DECK_Y, -6.05), -0.15)
     tube(k.bm('Rubber'), [(0, DECK_Y + 0.02, -6.2), (0.5, DECK_Y + 0.02, -9.5), (-0.3, DECK_Y + 0.02, -13.0), (2.4, DECK_Y + 0.02, -15.6)], 0.015, 5)
 
-    # Along the deck's front: flame jets, CO2 jets, spark fountains, moving heads pointing up.
-    for i in range(12):
-        x = (i - 5.5) * 4.6
-        k.box('Dark', (0.5, 0.22, 0.4), (x, DECK_Y + 0.11, -12.4), bevel=0.02)
-        k.drum('Steel', 0.07, 0.16, (x, DECK_Y + 0.22, -12.4), 8)
-        k.source('flames', (x, DECK_Y + 0.38, -12.4))
-    for x in (-25, -16, -7.5, 7.5, 16, 25):
+    # Along the deck's front and the catwalk: flame jets, CO2 jets, spark fountains, moving heads
+    # pointing up; round the platform at the catwalk's end, more of each.
+    jets = [((i - 6.5) * 5.0, -12.4) for i in range(14)] + [(sx * 2.55, z) for sx in (-1, 1) for z in (-8.5, -4.0)]
+    jets += [(sin(a) * (cr - 0.45), cz + cos(a) * (cr - 0.45)) for a in (-2.0, -1.0, 0.0, 1.0, 2.0)]
+    for x, z in jets:
+        k.box('Dark', (0.5, 0.22, 0.4), (x, DECK_Y + 0.11, z), bevel=0.02)
+        k.drum('Steel', 0.07, 0.16, (x, DECK_Y + 0.22, z), 8)
+        k.source('flames', (x, DECK_Y + 0.38, z))
+    for x in (-32, -25, -16, -7.5, 7.5, 16, 25, 32):
         k.drum('Dark', 0.12, 0.45, (x, DECK_Y, -13.4), 12)
         k.source('co2', (x, DECK_Y + 0.45, -13.4))
-    for x, z in ((-2.6, -5.0), (2.6, -5.0), (-2.6, -9.6), (2.6, -9.6), (-11.4, -12.45), (11.4, -12.45), (-20.6, -12.45), (20.6, -12.45)):
+    sparks = [(-2.6, -6.2), (2.6, -6.2), (-2.6, -10.2), (2.6, -10.2), (-11.4, -12.45), (11.4, -12.45), (-20.6, -12.45), (20.6, -12.45)]
+    sparks += [(sin(a) * (cr - 0.5), cz + cos(a) * (cr - 0.5)) for a in (-1.5, -0.5, 0.5, 1.5)]
+    for x, z in sparks:
         k.box('Dark', (0.4, 0.15, 0.4), (x, DECK_Y + 0.075, z), bevel=0.02)
         k.source('sparks', (x, DECK_Y + 0.15, z))
-    for i in range(16):
-        x = (i - 7.5) * 3.5
+    for i in range(20):
+        x = (i - 9.5) * 3.5
         k.moving_head((x, DECK_Y + 0.3, -12.95), (x * 0.02, 1, 0.45), 'Floor', 30, 0.03)
+    for a in (-2.5, -1.5, -0.5, 0.5, 1.5, 2.5):
+        k.moving_head((sin(a) * (cr - 0.3), DECK_Y + 0.3, cz + cos(a) * (cr - 0.3)), (sin(a) * 0.4, 1, cos(a) * 0.4), 'Floor', 30, 0.03)
 
     # ------------------------------------------------------------- the pit and the field
-    for a, c in (((-35, -8), (-4.5, -8)), ((-4.5, -8), (-4.5, -2.5)), ((-4.5, -2.5), (4.5, -2.5)), ((4.5, -2.5), (4.5, -8)), ((4.5, -8), (35, -8))):
+    pit = [(-40, -8), (-6.8, -8), (-6.8, 2.0), (-3.4, 8.0), (3.4, 8.0), (6.8, 2.0), (6.8, -8), (40, -8)]
+    for a, c in zip(pit, pit[1:]):
         k.barrier((a[0], 0, a[1]), (c[0], 0, c[1]))
     for s in (-1, 1):
-        for i in range(10):
-            k.speaker_stack((s * (5.0 + i * 2.55), 0, -11.4), 0, 2, 0)
+        for i in range(11):
+            k.speaker_stack((s * (8.0 + i * 2.55), 0, -11.4), 0, 2, 0)
         # A delay tower out in the field: a truss mast on a ballast base with a small hang.
         dx, dz = s * 30.0, 55.0
         k.box('Dark', (2.6, 0.5, 2.6), (dx, 0.25, dz), bevel=0.03)
@@ -850,34 +1096,41 @@ def build(k):
     for dx in (-0.1, 0.0, 0.1):
         tube(k.bm('Rubber'), [(13 + dx, DECK_Y + 0.05, -12.3), (13 + dx, 3.85, -11.6), (13 + dx, 3.82, -10.0), (13 + dx, 3.85, -8.5), (13 + dx, 2.0, -8.25), (13 + dx, 0.03, -8.2)], 0.025, 5)
 
-    for i, name in enumerate(('centre', 'left', 'right', 'towers', 'domes')):
+    for i, name in enumerate(OUTLINES):
         k.objects.append(('Move_outline_%d' % i, 'Glow.Outline', G[i]))
+
+    # The flame jets nearest the middle first: the first `middle` of them go off with the middle salvo.
+    flames = sorted(k.data['sources']['flames'], key=lambda p: (abs(p[0]) > 12, p[2] < -12.2, abs(p[0])))
+    k.data['sources']['flames'] = flames
+    middle = sum(1 for p in flames if abs(p[0]) <= 12)
+    k.data['sources']['fireworks'] = [K.r3(p) for p in marks['fireworks']]
 
     # Self-check: what the brief counts.
     groups = {}
     for fx in k.data['fixtures']:
         groups[fx['group']] = groups.get(fx['group'], 0) + 1
-    assert groups == {'Header': 24, 'Sky': 14, 'Floor': 16, 'Tower': 8}, groups
-    k.data['sources']['fireworks'] = [K.r3(p) for p in marks['fireworks']]
-    assert 1000 <= len(k.data['instances']['bulb']) <= 2500, len(k.data['instances']['bulb'])
+    assert groups == {'Header': 24, 'Sky': 18, 'Floor': 26, 'Tower': 16, 'Roof': 10, 'Tunnel': 16, 'Crown': 12}, groups
+    assert 1500 <= len(k.data['instances']['bulb']) <= 4000, len(k.data['instances']['bulb'])
     counts = {name: len(v) for name, v in k.data['sources'].items()}
-    assert counts == {'flames': 12, 'co2': 6, 'sparks': 8, 'confetti': 4, 'fireworks': 9, 'laser.top': 8, 'laser.arch': 1}, counts
+    assert counts == {'flames': 29, 'co2': 8, 'sparks': 12, 'confetti': 4, 'fireworks': 14, 'laser.top': 8, 'laser.arch': 1,
+                      'laser.tower': 2, 'laser.minaret': 4, 'laser.crown': 3}, counts
 
     return {
         'ao': 4.0,
         'deck': {'front': DECK_FRONT, 'half': DECK_HALF, 'y': DECK_Y},
-        'screen': [0, 13.7, ZB + 0.33],
-        'thrust': {'half': 3, 'front': DECK_FRONT + 8},
-        'outlines': ['centre', 'left', 'right', 'towers', 'domes'],
-        'obstacles': [[-30, 55, 2.2], [30, 55, 2.2], [0, 64, 4.5]],
+        'screen': list(big(marks['screen'])),
+        'thrust': {'half': 3, 'front': cz + cr},
+        'flameMiddle': [0, middle - 1],
+        'outlines': list(OUTLINES),
+        'obstacles': [[-30, 55, 2.2], [30, 55, 2.2], [0, 64, 4.5], [-CROWN_SPAN / 2, CROWN_Z, 3.5], [CROWN_SPAN / 2, CROWN_Z, 3.5]],
         'views': {
-            'front': ((0, 6.5, 62), (0, 15, -20), 74),
-            'hero': ((62, 26, 88), (-6, 12, -16), 56),
+            'front': ((0, 7, 70), (0, 22, -24), 80),
+            'hero': ((80, 30, 100), (-6, 16, -20), 56),
             'close': ((7.5, 5.6, 1.5), (-0.5, 4.6, -15), 70),
-            'dj': ((2.8, 8.4, -15.5), (0, 7.1, -21.5), 56),
-            'detail': ((25, 7.5, -11), (33, 10, -25), 62),
-            'wing': ((30, 14, 12), (32, 17, -25), 62),
-            'top': ((20, 60, 30), (10, 15, -26), 60),
-            'tower': ((46, 12, 2), (50, 20, -26), 62),
+            'dj': ((2.8, 8.4, -19.5), (0, 7.1, -26.5), 56),
+            'tunnel': ((0, 9, 2), (0, 14, -40), 60),
+            'wing': ((40, 16, 14), (44, 20, -24), 62),
+            'top': ((30, 90, 60), (0, 15, -26), 60),
+            'side': ((-70, 12, 30), (10, 20, -26), 62),
         },
     }
