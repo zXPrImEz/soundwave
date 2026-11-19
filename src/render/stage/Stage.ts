@@ -570,6 +570,8 @@ export class Stage {
     shared.uLow.value = this.low;
     shared.uMid.value = this.mid;
     shared.uHigh.value = this.high;
+    shared.uDrive.value = s.overdrive;
+    shared.uPeak.value += (Math.max(s.level === 'peak' ? 1 : 0, s.overdrive) - shared.uPeak.value) * ease(3);
     shared.uKey.value.copy(this.key);
     shared.uAccent.value.copy(this.accent);
     shared.uWash.value.copy(this.wash);

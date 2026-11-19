@@ -22,6 +22,9 @@ export const shared = {
   uLow: { value: 0.2 },
   uMid: { value: 0.2 },
   uHigh: { value: 0.2 },
+  /** How far into a peak the show is, 0..1 (eased; overdrive counts as one), and overdrive alone. */
+  uPeak: { value: 0 },
+  uDrive: { value: 0 },
   uKey: { value: new THREE.Color(1, 0.45, 0.8) },
   uAccent: { value: new THREE.Color(0.4, 0.9, 1) },
   uWash: { value: new THREE.Color(0.25, 0.2, 1) },
